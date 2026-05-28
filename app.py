@@ -50,8 +50,11 @@ PAGE_WIDTH, PAGE_HEIGHT = PAGE_SIZE
 TEMPLATE_WIDTH_PX = 2480
 TEMPLATE_HEIGHT_PX = 3508
 
-# Ensure output directory exists at startup
-GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+# Writable output directory:
+# - local/Render/Railway: project ./generated
+# - Vercel serverless: /tmp/generated (read-only app bundle at /var/task)
+OUTPUT_DIR = Path("/tmp/generated") if os.environ.get("VERCEL") else GENERATED_DIR
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Public base URL for pdfUrl in responses (set via env on Render/Railway)
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
@@ -514,7 +517,7 @@ def _handle_generate_certificate():
 
     assert fields is not None
     filename = f"{uuid.uuid4()}.pdf"
-    output_path = GENERATED_DIR / filename
+    output_path = OUTPUT_DIR / filename
 
     try:
         generate_certificate_pdf(fields, output_path)
@@ -543,11 +546,11 @@ def _handle_generate_certificate():
 def _handle_serve_generated(filename: str):
     if not SAFE_FILENAME.match(filename):
         abort(404)
-    file_path = GENERATED_DIR / filename
+    file_path = OUTPUT_DIR / filename
     if not file_path.is_file():
         abort(404)
     return send_from_directory(
-        GENERATED_DIR,
+        OUTPUT_DIR,
         filename,
         mimetype="application/pdf",
         as_attachment=False,
