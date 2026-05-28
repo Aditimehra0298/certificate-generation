@@ -1,0 +1,5 @@
+Flask>=3.0.0,<4
+reportlab>=4.0.0,<5
+Pillow>=10.0.0,<12
+qrcode[pil]>=7.4.0,<9
+gunicorn>=22.0.0,<24
