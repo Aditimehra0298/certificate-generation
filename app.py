@@ -1,9 +1,10 @@
 """
 Certificate PDF Generation API
 
-Flask service that generates multi-page certificate PDFs from image templates,
-overlays dynamic fields, and serves generated files. Designed for n8n workflows
-and deployment on Render / Railway via gunicorn.
+Flask service that generates multi-page certificate PDFs from per-course PDF
+templates (page 1 = certificate, page 2 = transcript), overlays dynamic fields,
+and serves generated files. Designed for n8n workflows and deployment on
+Render / Railway via gunicorn.
 """
 
 from __future__ import annotations
@@ -14,17 +15,15 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, request, send_from_directory, abort
-from reportlab.lib.pagesizes import A4, portrait
-from reportlab.lib.utils import ImageReader
+from pypdf import PdfReader, PdfWriter
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
-
-import qrcode
 
 # ---------------------------------------------------------------------------
 # Paths & configuration
@@ -35,20 +34,27 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 GENERATED_DIR = BASE_DIR / "generated"
 FONTS_DIR = BASE_DIR / "fonts"
 
-PAGE1_TEMPLATE = TEMPLATES_DIR / "page1.png"
-PAGE2_TEMPLATE = TEMPLATES_DIR / "page2.png"
 FONT_REGULAR = FONTS_DIR / "times.ttf"
 FONT_BOLD = FONTS_DIR / "timesbd.ttf"
 FONT_FALLBACK_REGULAR = FONTS_DIR / "arial.ttf"
 FONT_FALLBACK_BOLD = FONTS_DIR / "arialbd.ttf"
+FONT_CORSIVA_CANDIDATES = (
+    FONTS_DIR / "monotype-corsiva.ttf",
+    FONTS_DIR / "Monotype Corsiva.ttf",
+    FONTS_DIR / "MTCORSVA.TTF",
+)
 
-# Portrait A4 in points (matches 2480×3508 px templates at ~300 DPI)
-PAGE_SIZE = portrait(A4)
-PAGE_WIDTH, PAGE_HEIGHT = PAGE_SIZE
+# Template PDF page size in points (matches templates/*.pdf mediabox)
+PAGE_WIDTH = 1860.0
+PAGE_HEIGHT = 2631.0
+PAGE_SIZE = (PAGE_WIDTH, PAGE_HEIGHT)
 
 # Source template pixel dimensions (for coordinate conversion)
 TEMPLATE_WIDTH_PX = 2480
 TEMPLATE_HEIGHT_PX = 3508
+
+# Layout offsets/font sizes were tuned on portrait A4 (~595 pt wide); scale for PDF templates.
+_PT_SCALE = PAGE_WIDTH / 595.27
 
 # Writable output directory:
 # - local/Render/Railway: project ./generated
@@ -60,7 +66,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 
 # ---------------------------------------------------------------------------
-# Text positioning — calibrated to templates/page1.png & page2.png
+# Text positioning — calibrated to template page 1 & page 2 designs.
 # Use _px(x_from_left, y_from_top) to convert template pixels → PDF points.
 # ---------------------------------------------------------------------------
 
@@ -78,36 +84,48 @@ class Page1Layout:
     # Baseline for recipient name (px from top/left on template)
     CANDIDATE_NAME_BASELINE_Y_PX = 1185
     CANDIDATE_NAME_X_PX = 1315
-    CANDIDATE_NAME = _px(CANDIDATE_NAME_X_PX, CANDIDATE_NAME_BASELINE_Y_PX)
-    CANDIDATE_FONT_SIZE = 38
+    CANDIDATE_NAME = (
+        _px(CANDIDATE_NAME_X_PX, CANDIDATE_NAME_BASELINE_Y_PX)[0] + 34,
+        _px(CANDIDATE_NAME_X_PX, CANDIDATE_NAME_BASELINE_Y_PX)[1] - 30,
+    )
+    CANDIDATE_FONT_SIZE = 44 * _PT_SCALE
 
     # Bottom-left metadata values — shared X so all values align after labels
-    META_VALUE_X = _px(870, 0)[0]
-    META_FONT_SIZE = 11
-    ISSUE_DATE_Y = _px(0, 2699)[1]
-    CERT_NUMBER_Y = _px(0, 2769)[1] - 4
-    DELEGATE_NUMBER_Y = _px(0, 2886)[1]
+    META_VALUE_X = _px(870, 0)[0] + 25
+    META_FONT_SIZE = 11 * _PT_SCALE
+    ISSUE_DATE_Y = _px(0, 2699)[1] - 5
+    CERT_NUMBER_Y = _px(0, 2769)[1] - 4 * _PT_SCALE - 5
+    DELEGATE_NUMBER_Y = _px(0, 2886)[1] - 5
 
     # Verification QR (top-left placeholder on template)
-    QR_SIZE = 68
+    QR_SIZE = 68 * _PT_SCALE
     QR_TOP_LEFT = _px(72, 72)
 
 
 class Page2Layout:
     """Program Transcript — field positions (training program is on the template)."""
 
-    # “Name :” row (y≈760) — total shift: right 86pt, down 32.5pt
-    NAME = (_px(362, 760)[0] + 86, _px(362, 760)[1] - 32.5)
-    NAME_FONT_SIZE = 11
+    # “Name :” row (y≈760) — total shift: right 86pt, down 32.5pt (A4-calibrated)
+    NAME = (
+        _px(362, 760)[0] + 86 * _PT_SCALE + 10,
+        _px(362, 760)[1] - 32.5 * _PT_SCALE,
+    )
+    NAME_FONT_SIZE = 11 * _PT_SCALE
 
     # “Overall Grade:” row (y≈850) — separate line from name
-    GRADE = (_px(2276, 850)[0], _px(2276, 850)[1] - 3.4)
-    GRADE_FONT_SIZE = 11
+    GRADE = (_px(2276, 850)[0] + 30, _px(2276, 850)[1] - 3.4 * _PT_SCALE - 5)
+    GRADE_FONT_SIZE = 11 * _PT_SCALE
 
     # Centered in the blank band above “Certificate Number” / “Issue Date” labels
-    FOOTER_CERT_NUMBER = (_px(310, 3210)[0] + 92, _px(310, 3210)[1] + 45)
-    FOOTER_ISSUE_DATE = (_px(1240, 3210)[0] + 30, _px(1240, 3210)[1] + 48)
-    FOOTER_FONT_SIZE = 11
+    FOOTER_CERT_NUMBER = (
+        _px(310, 3210)[0] + 92 * _PT_SCALE,
+        _px(310, 3210)[1] + 45 * _PT_SCALE + 10,
+    )
+    FOOTER_ISSUE_DATE = (
+        _px(1240, 3210)[0] + 30 * _PT_SCALE,
+        _px(1240, 3210)[1] + 48 * _PT_SCALE + 2,
+    )
+    FOOTER_FONT_SIZE = 11 * _PT_SCALE
 
 
 # Required JSON fields for certificate generation
@@ -162,11 +180,19 @@ def create_app() -> Flask:
 # ---------------------------------------------------------------------------
 
 _fonts_registered = False
+_corsiva_font_path: Path | None = None
+
+
+def _find_corsiva_font() -> Path | None:
+    for path in FONT_CORSIVA_CANDIDATES:
+        if path.is_file():
+            return path
+    return None
 
 
 def _register_fonts() -> None:
-    """Register serif fonts to match certificate template typography."""
-    global _fonts_registered
+    """Register certificate fonts including Monotype Corsiva for recipient names."""
+    global _fonts_registered, _corsiva_font_path
     if _fonts_registered:
         return
 
@@ -186,6 +212,16 @@ def _register_fonts() -> None:
     if bold.exists():
         pdfmetrics.registerFont(TTFont("CertTimes-Bold", str(bold)))
 
+    _corsiva_font_path = _find_corsiva_font()
+    if _corsiva_font_path:
+        pdfmetrics.registerFont(TTFont("CertCorsiva", str(_corsiva_font_path)))
+    else:
+        logger.warning(
+            "Monotype Corsiva not found in %s; recipient name will use Times. "
+            "Add monotype-corsiva.ttf to fonts/.",
+            FONTS_DIR,
+        )
+
     _fonts_registered = True
 
 
@@ -200,17 +236,83 @@ def _font_name(bold: bool = False) -> str:
     return "Helvetica-Bold" if bold else "Helvetica"
 
 
+def _name_font_name() -> str:
+    """Return Monotype Corsiva when available, otherwise the regular certificate font."""
+    if _corsiva_font_path and _corsiva_font_path.is_file():
+        return "CertCorsiva"
+    return _font_name(bold=False)
+
+
 # ---------------------------------------------------------------------------
 # Validation & helpers
 # ---------------------------------------------------------------------------
 
 def _validate_startup_assets() -> None:
     """Log warnings if templates or fonts are missing (fail on generate)."""
-    for path in (PAGE1_TEMPLATE, PAGE2_TEMPLATE):
-        if not path.is_file():
-            logger.warning("Missing template: %s", path)
+    templates = list_pdf_templates()
+    if not templates:
+        logger.warning("No PDF templates found in %s", TEMPLATES_DIR)
     if not FONT_REGULAR.is_file():
         logger.warning("Missing font: %s", FONT_REGULAR)
+
+
+def _normalize_course_name(value: str) -> str:
+    """Normalize course/template names for fuzzy matching."""
+    text = value.lower().replace("&", " and ")
+    text = re.sub(r"[^\w\s]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def list_pdf_templates() -> list[Path]:
+    """Return sorted PDF template paths from the templates directory."""
+    return sorted(TEMPLATES_DIR.glob("*.pdf"))
+
+
+def resolve_template_pdf(course_name: str) -> Path:
+    """
+    Pick the best-matching certificate PDF in templates/ for the given courseName.
+    Raises FileNotFoundError when no suitable template exists.
+    """
+    templates = list_pdf_templates()
+    if not templates:
+        raise FileNotFoundError(f"No PDF templates found in {TEMPLATES_DIR}")
+
+    norm_course = _normalize_course_name(course_name)
+    if not norm_course:
+        raise FileNotFoundError("courseName is empty after normalization")
+
+    scored: list[tuple[float, Path]] = []
+    for path in templates:
+        norm_file = _normalize_course_name(path.stem)
+        if norm_file == norm_course:
+            return path
+        ratio = SequenceMatcher(None, norm_course, norm_file).ratio()
+        if norm_course in norm_file or norm_file in norm_course:
+            ratio = max(ratio, 0.85)
+        scored.append((ratio, path))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    best_ratio, best_path = scored[0]
+    if best_ratio < 0.55:
+        available = ", ".join(p.stem for p in templates)
+        raise FileNotFoundError(
+            f"No certificate template matched courseName={course_name!r}. "
+            f"Available templates: {available}"
+        )
+
+    logger.info(
+        "Matched courseName=%r to template=%s (score=%.2f)",
+        course_name,
+        best_path.name,
+        best_ratio,
+    )
+    return best_path
+
+
+def _template_page_size(template_reader: PdfReader, page_index: int) -> tuple[float, float]:
+    """Return (width, height) in points for a template page."""
+    page = template_reader.pages[page_index]
+    return float(page.mediabox.width), float(page.mediabox.height)
 
 
 def _validate_payload(data: dict[str, Any]) -> tuple[dict[str, str] | None, tuple[dict, int] | None]:
@@ -273,9 +375,10 @@ def _draw_centered_text(
     font_size: float,
     bold: bool = False,
     color: tuple[float, float, float] = (0.08, 0.08, 0.08),
+    font: str | None = None,
 ) -> None:
     """Draw horizontally centered text at (x, y)."""
-    font = _font_name(bold=bold)
+    font = font or _font_name(bold=bold)
     c.setFont(font, font_size)
     c.setFillColorRGB(*color)
     text_width = c.stringWidth(text, font, font_size)
@@ -401,55 +504,8 @@ def _draw_rect_from_template_px(
     c.rect(left, bottom_y, right - left, top_y - bottom_y, stroke=0, fill=1)
 
 
-def _draw_full_page_background(c: canvas.Canvas, image_path: Path) -> None:
-    """Scale background image to cover entire portrait A4 page."""
-    c.drawImage(
-        ImageReader(str(image_path)),
-        0,
-        0,
-        width=PAGE_WIDTH,
-        height=PAGE_HEIGHT,
-        preserveAspectRatio=False,
-        mask="auto",
-    )
-
-
-def _make_qr_image_reader(url: str, box_size: int = 8) -> ImageReader:
-    """Build a ReportLab ImageReader from a QR code for the given URL."""
-    qr = qrcode.QRCode(
-        version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=box_size,
-        border=2,
-    )
-    qr.add_data(url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return ImageReader(buffer)
-
-
-# ---------------------------------------------------------------------------
-# PDF generation
-# ---------------------------------------------------------------------------
-
-def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> None:
-    """
-    Create a 2-page portrait A4 PDF with template backgrounds and overlays.
-    """
-    if not PAGE1_TEMPLATE.is_file() or not PAGE2_TEMPLATE.is_file():
-        raise FileNotFoundError(
-            f"Template images missing. Expected {PAGE1_TEMPLATE} and {PAGE2_TEMPLATE}"
-        )
-
-    c = canvas.Canvas(str(output_path), pagesize=PAGE_SIZE)
-    c.setTitle(f"Certificate - {fields['certificateId']}")
-
-    # --- Page 1: Certificate of Attainment ---
-    _draw_full_page_background(c, PAGE1_TEMPLATE)
-
+def _draw_page1_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
+    """Draw dynamic fields on certificate page 1."""
     _draw_centered_text(
         c,
         fields["candidateName"],
@@ -464,11 +520,10 @@ def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> None:
     _draw_left_text(c, fields["issueDate"], meta_x, Page1Layout.ISSUE_DATE_Y, meta_size, bold=True)
     _draw_left_text(c, fields["certificateNumber"], meta_x, Page1Layout.CERT_NUMBER_Y, meta_size, bold=True)
     _draw_left_text(c, fields["delegateNumber"], meta_x, Page1Layout.DELEGATE_NUMBER_Y, meta_size, bold=True)
-    c.showPage()
 
-    # --- Page 2: Program Transcript ---
-    _draw_full_page_background(c, PAGE2_TEMPLATE)
 
+def _draw_page2_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
+    """Draw dynamic fields on transcript page 2."""
     _draw_left_text(
         c,
         fields["candidateName"],
@@ -497,9 +552,49 @@ def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> None:
         Page2Layout.FOOTER_ISSUE_DATE[1],
         Page2Layout.FOOTER_FONT_SIZE,
     )
-    c.showPage()
 
+
+def _build_overlay_page(
+    fields: dict[str, str],
+    page_index: int,
+    page_size: tuple[float, float],
+) -> Any:
+    """Create a single-page transparent overlay PDF for merging onto a template page."""
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=page_size)
+    if page_index == 0:
+        _draw_page1_overlay(c, fields)
+    elif page_index == 1:
+        _draw_page2_overlay(c, fields)
+    else:
+        raise ValueError(f"Unsupported template page index: {page_index}")
     c.save()
+    buffer.seek(0)
+    return PdfReader(buffer).pages[0]
+
+
+def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> None:
+    """
+    Create a 2-page PDF by merging text overlays onto the matching course template.
+    """
+    template_path = resolve_template_pdf(fields["courseName"])
+    template_reader = PdfReader(str(template_path))
+    if len(template_reader.pages) < 2:
+        raise ValueError(
+            f"Template {template_path.name} must contain at least 2 pages, "
+            f"found {len(template_reader.pages)}"
+        )
+
+    writer = PdfWriter()
+    for page_index in (0, 1):
+        page_size = _template_page_size(template_reader, page_index)
+        overlay_page = _build_overlay_page(fields, page_index, page_size)
+        template_page = template_reader.pages[page_index]
+        template_page.merge_page(overlay_page)
+        writer.add_page(template_page)
+
+    with output_path.open("wb") as pdf_file:
+        writer.write(pdf_file)
 
 
 # ---------------------------------------------------------------------------
@@ -528,7 +623,10 @@ def _handle_generate_certificate():
         )
     except FileNotFoundError as exc:
         logger.exception("Template missing during generation")
-        return jsonify({"success": False, "error": str(exc)}), 500
+        return jsonify({"success": False, "error": str(exc)}), 404
+    except ValueError as exc:
+        logger.exception("Invalid template during generation")
+        return jsonify({"success": False, "error": str(exc)}), 400
     except Exception as exc:
         logger.exception("PDF generation failed")
         if output_path.exists():
