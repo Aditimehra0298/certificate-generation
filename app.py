@@ -15,7 +15,6 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +23,13 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+
+from template_registry import (
+    list_available_courses,
+    list_pdf_templates,
+    resolve_template_pdf,
+    validate_template_registry,
+)
 
 # ---------------------------------------------------------------------------
 # Paths & configuration
@@ -164,6 +170,10 @@ def create_app() -> Flask:
     def health():
         return jsonify({"status": "ok"}), 200
 
+    @app.route("/templates", methods=["GET"])
+    def list_templates():
+        return jsonify({"success": True, "templates": list_available_courses()}), 200
+
     @app.route("/generate-certificate", methods=["POST"])
     def generate_certificate():
         return _handle_generate_certificate()
@@ -252,61 +262,12 @@ def _validate_startup_assets() -> None:
     templates = list_pdf_templates()
     if not templates:
         logger.warning("No PDF templates found in %s", TEMPLATES_DIR)
+    else:
+        logger.info("Loaded %d certificate templates from %s", len(templates), TEMPLATES_DIR)
+    for message in validate_template_registry(TEMPLATES_DIR):
+        logger.warning(message)
     if not FONT_REGULAR.is_file():
         logger.warning("Missing font: %s", FONT_REGULAR)
-
-
-def _normalize_course_name(value: str) -> str:
-    """Normalize course/template names for fuzzy matching."""
-    text = value.lower().replace("&", " and ")
-    text = re.sub(r"[^\w\s]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def list_pdf_templates() -> list[Path]:
-    """Return sorted PDF template paths from the templates directory."""
-    return sorted(TEMPLATES_DIR.glob("*.pdf"))
-
-
-def resolve_template_pdf(course_name: str) -> Path:
-    """
-    Pick the best-matching certificate PDF in templates/ for the given courseName.
-    Raises FileNotFoundError when no suitable template exists.
-    """
-    templates = list_pdf_templates()
-    if not templates:
-        raise FileNotFoundError(f"No PDF templates found in {TEMPLATES_DIR}")
-
-    norm_course = _normalize_course_name(course_name)
-    if not norm_course:
-        raise FileNotFoundError("courseName is empty after normalization")
-
-    scored: list[tuple[float, Path]] = []
-    for path in templates:
-        norm_file = _normalize_course_name(path.stem)
-        if norm_file == norm_course:
-            return path
-        ratio = SequenceMatcher(None, norm_course, norm_file).ratio()
-        if norm_course in norm_file or norm_file in norm_course:
-            ratio = max(ratio, 0.85)
-        scored.append((ratio, path))
-
-    scored.sort(key=lambda item: item[0], reverse=True)
-    best_ratio, best_path = scored[0]
-    if best_ratio < 0.55:
-        available = ", ".join(p.stem for p in templates)
-        raise FileNotFoundError(
-            f"No certificate template matched courseName={course_name!r}. "
-            f"Available templates: {available}"
-        )
-
-    logger.info(
-        "Matched courseName=%r to template=%s (score=%.2f)",
-        course_name,
-        best_path.name,
-        best_ratio,
-    )
-    return best_path
 
 
 def _template_page_size(template_reader: PdfReader, page_index: int) -> tuple[float, float]:
@@ -337,6 +298,10 @@ def _validate_payload(data: dict[str, Any]) -> tuple[dict[str, str] | None, tupl
     if issue_date is not None and not _non_empty_str(issue_date):
         issue_date = None
 
+    template_file = data.get("templateFile")
+    if template_file is not None:
+        template_file = str(template_file).strip() or None
+
     cleaned = {
         "certificateId": str(data["certificateId"]).strip(),
         "candidateName": str(data["candidateName"]).strip(),
@@ -346,6 +311,7 @@ def _validate_payload(data: dict[str, Any]) -> tuple[dict[str, str] | None, tupl
         "delegateNumber": str(data["delegateNumber"]).strip(),
         "verifyUrl": verify_url,
         "issueDate": str(issue_date).strip() if issue_date else _default_issue_date(),
+        "templateFile": template_file,
     }
     return cleaned, None
 
@@ -573,11 +539,22 @@ def _build_overlay_page(
     return PdfReader(buffer).pages[0]
 
 
-def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> None:
+def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> Path:
     """
     Create a 2-page PDF by merging text overlays onto the matching course template.
+    Returns the resolved template path.
     """
-    template_path = resolve_template_pdf(fields["courseName"])
+    template_path = resolve_template_pdf(
+        fields["courseName"],
+        template_file=fields.get("templateFile"),
+        templates_dir=TEMPLATES_DIR,
+    )
+    logger.info(
+        "Using template=%s for courseName=%r certificateId=%s",
+        template_path.name,
+        fields["courseName"],
+        fields["certificateId"],
+    )
     template_reader = PdfReader(str(template_path))
     if len(template_reader.pages) < 2:
         raise ValueError(
@@ -595,6 +572,8 @@ def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> None:
 
     with output_path.open("wb") as pdf_file:
         writer.write(pdf_file)
+
+    return template_path
 
 
 # ---------------------------------------------------------------------------
@@ -615,7 +594,7 @@ def _handle_generate_certificate():
     output_path = OUTPUT_DIR / filename
 
     try:
-        generate_certificate_pdf(fields, output_path)
+        template_path = generate_certificate_pdf(fields, output_path)
         logger.info(
             "Generated certificate pdf=%s certificateId=%s",
             filename,
@@ -637,6 +616,10 @@ def _handle_generate_certificate():
         {
             "success": True,
             "pdfUrl": _public_pdf_url(filename),
+            "filename": filename,
+            "certificateId": fields["certificateId"],
+            "templateFile": template_path.name,
+            "courseName": fields["courseName"],
         }
     ), 201
 
