@@ -23,7 +23,7 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 CANONICAL_TEMPLATES: tuple[str, ...] = (
     "Advanced Food Fraud Mitigation and Auditing Aligned with FSSC 22000:2018 VERSION 6",
     "Business and Corporate Ethics : A Professional Starter Programme",
-    "CARBON TRADING & REPORTING PRACTITIONER PROGRAM",
+    "Carbon Trading & Reporting Practitioner Program",
     "Carbon Trading & Reporting",
     "Climate Adaptation & Cost of Inaction Training Course",
     "Cyber Security Phishing Awareness Trainings",
@@ -96,7 +96,8 @@ COURSE_ALIASES: dict[str, str] = {
     "iso 14001 2026 ems lead auditor": "ISO 140012026 EMS Lead Auditor",
     "iso 14001 2026 lead auditor transition course": "ISO 14001:2026  Lead Auditor Transition  Course",
     "isms induction training program": "ISMS Induction Training  Program",
-    "carbon trading reporting practitioner program": "CARBON TRADING & REPORTING PRACTITIONER PROGRAM",
+    "carbon trading reporting practitioner program": "Carbon Trading & Reporting Practitioner Program",
+    "carbon trading and reporting practitioner program": "Carbon Trading & Reporting Practitioner Program",
     "iso 19011 2018 guidelines for auditing management systems": (
         "ISO 190112018 – Guidelines for Auditing Management Systems"
     ),
