@@ -27,6 +27,7 @@ CANONICAL_TEMPLATES: tuple[str, ...] = (
     "Carbon Trading & Reporting",
     "Climate Adaptation & Cost of Inaction Training Course",
     "Cyber Security Phishing Awareness Trainings",
+    "Cybersecurity, Ethical Hacking & Penetration Testing Professional Course",
     "DIPLOMA IN CYBERSECURITY & ETHICAL HACKING (FOUNDATIONS)",
     "DIPLOMA IN HACCP FOOD SAFETY STANDARDS (LEVEL 2)",
     "ESG Management Development Training Program",
@@ -88,6 +89,12 @@ COURSE_ALIASES: dict[str, str] = {
     "diploma in haccp food safety standards level 2": "DIPLOMA IN HACCP FOOD SAFETY STANDARDS (LEVEL 2)",
     "diploma in cybersecurity ethical hacking foundations": (
         "DIPLOMA IN CYBERSECURITY & ETHICAL HACKING (FOUNDATIONS)"
+    ),
+    "cybersecurity ethical hacking and penetration testing professional course": (
+        "Cybersecurity, Ethical Hacking & Penetration Testing Professional Course"
+    ),
+    "cybersecurity ethical hacking penetration testing professional course": (
+        "Cybersecurity, Ethical Hacking & Penetration Testing Professional Course"
     ),
     "iso iec 27001 2022 awareness course": "ISOIEC 27001:2022 Awareness Course",
     "iso 14001 2015 ems internal auditor": "ISO 140012015 EMS Internal Auditor",
