@@ -53,6 +53,7 @@ CANONICAL_TEMPLATES: tuple[str, ...] = (
     "Mastering EU MDR Essentials: Practical Compliance for Medical Devices",
     "PRP Requirements for Feed and Animal Food Production as per ISO-TS 22002-6:2016",
     "PRP Requirements for Transport and Storage as per ISO-TS 22002-5:2019",
+    "Professional plumbing tarining program",
     "Training on ISO 27001 Annex 8",
     "Understanding and Implementing POSH in the Workplace",
 )
@@ -110,6 +111,9 @@ COURSE_ALIASES: dict[str, str] = {
     ),
     "posh in the workplace": "Understanding and Implementing POSH in the Workplace",
     "understanding and implementing posh": "Understanding and Implementing POSH in the Workplace",
+    "professional plumbing training program": "Professional plumbing tarining program",
+    "professional plumbing tarining program": "Professional plumbing tarining program",
+    "plumbing training program": "Professional plumbing tarining program",
 }
 
 

@@ -19,10 +19,13 @@ from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, request, send_from_directory, abort
+from flask_cors import CORS
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from PIL import Image as PILImage
 
 from template_registry import (
     list_available_courses,
@@ -39,6 +42,9 @@ BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 GENERATED_DIR = BASE_DIR / "generated"
 FONTS_DIR = BASE_DIR / "fonts"
+ASSETS_DIR = BASE_DIR / "assets"
+PLUMBING_QR_DEFAULT = ASSETS_DIR / "plumbing-qr.png"
+PLUMBING_PHOTO_DEFAULT = ASSETS_DIR / "plumbing-photo.png"
 
 FONT_REGULAR = FONTS_DIR / "times.ttf"
 FONT_BOLD = FONTS_DIR / "timesbd.ttf"
@@ -49,6 +55,10 @@ FONT_CORSIVA_CANDIDATES = (
     FONTS_DIR / "Monotype Corsiva.ttf",
     FONTS_DIR / "MTCORSVA.TTF",
 )
+FONT_GREAT_VIBES = FONTS_DIR / "GreatVibes-Regular.ttf"
+FONT_ALLURA = FONTS_DIR / "Allura-Regular.ttf"
+FONT_MONTSERRAT_MEDIUM = FONTS_DIR / "Montserrat-Medium.ttf"
+FONT_MONTSERRAT_SEMIBOLD = FONTS_DIR / "Montserrat-SemiBold.ttf"
 
 # Template PDF page size in points (matches templates/*.pdf mediabox)
 PAGE_WIDTH = 1860.0
@@ -108,6 +118,47 @@ class Page1Layout:
     QR_TOP_LEFT = _px(72, 72)
 
 
+class PlumbingLayout:
+    """Single-page landscape euroTECH plumbing certificate (1492 × 1054 pt)."""
+
+    PAGE_WIDTH = 1492.0
+    PAGE_HEIGHT = 1054.0
+    # Spec: name #0B2161, other variable text #111111
+    NAVY = (0x0B / 255, 0x21 / 255, 0x61 / 255)
+    BLACK = (0x11 / 255, 0x11 / 255, 0x11 / 255)
+    # Spec sizes are px on a 1452-wide artboard; scale to this PDF width.
+    _PX = PAGE_WIDTH / 1452.0
+
+    NAME_CENTER_X = 780.0
+    NAME_BASELINE_FROM_TOP = 444.0
+    NAME_FONT_SIZE = 88 * _PX  # larger script name
+
+    UID_X = 686.0
+    UID_BASELINE_FROM_TOP = 503.0
+    UID_FONT_SIZE = 22 * _PX  # 21–23 px
+
+    FOOTER_BASELINE_FROM_TOP = 948.0
+    FOOTER_FONT_SIZE = 16 * _PX  # 15–17 px
+    DURATION_FONT_SIZE = 17 * _PX  # 16–18 px
+    CERT_NUMBER_CENTER_X = 418.0
+    ISSUE_DATE_CENTER_X = 625.0
+    START_DATE_CENTER_X = 930.0
+    DURATION_CENTER_X = 1135.0
+    DURATION_BASELINE_FROM_TOP = 954.0
+
+    # Scan-to-verify box (inside orange border, not covering it)
+    QR_SIZE = 88.0
+    QR_CENTER_X = 746.8
+    QR_CENTER_FROM_TOP = 933.5
+
+    # Candidate photo box (inside gold rounded rectangle, right of the name)
+    PHOTO_X = 1193.0
+    PHOTO_WIDTH = 158.0
+    PHOTO_TOP = 271.0
+    PHOTO_HEIGHT = 224.0
+    PHOTO_RADIUS = 16.0
+
+
 class Page2Layout:
     """Program Transcript — field positions (training program is on the template)."""
 
@@ -162,6 +213,7 @@ def create_app() -> Flask:
     """Application factory for production WSGI servers."""
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB JSON payload limit
+    CORS(app, resources={r"/*": {"origins": os.environ.get("CORS_ORIGINS", "*")}})
 
     _register_fonts()
     _validate_startup_assets()
@@ -231,6 +283,16 @@ def _register_fonts() -> None:
             "Add monotype-corsiva.ttf to fonts/.",
             FONTS_DIR,
         )
+
+    if FONT_GREAT_VIBES.is_file():
+        pdfmetrics.registerFont(TTFont("GreatVibes", str(FONT_GREAT_VIBES)))
+    elif FONT_ALLURA.is_file():
+        pdfmetrics.registerFont(TTFont("GreatVibes", str(FONT_ALLURA)))
+        logger.warning("Great Vibes missing; using Allura for plumbing names")
+    if FONT_MONTSERRAT_MEDIUM.is_file():
+        pdfmetrics.registerFont(TTFont("Montserrat-Medium", str(FONT_MONTSERRAT_MEDIUM)))
+    if FONT_MONTSERRAT_SEMIBOLD.is_file():
+        pdfmetrics.registerFont(TTFont("Montserrat-SemiBold", str(FONT_MONTSERRAT_SEMIBOLD)))
 
     _fonts_registered = True
 
@@ -312,6 +374,11 @@ def _validate_payload(data: dict[str, Any]) -> tuple[dict[str, str] | None, tupl
         "verifyUrl": verify_url,
         "issueDate": str(issue_date).strip() if issue_date else _default_issue_date(),
         "templateFile": template_file,
+        "uid": str(data.get("uid") or data["delegateNumber"]).strip(),
+        "startDate": str(data.get("startDate") or data.get("trainingStartDate") or "").strip(),
+        "trainingDuration": str(data.get("trainingDuration") or data.get("duration") or "").strip(),
+        "qrPath": str(data.get("qrPath") or "").strip(),
+        "photoPath": str(data.get("photoPath") or "").strip(),
     }
     return cleaned, None
 
@@ -377,9 +444,10 @@ def _draw_left_text(
     font_size: float,
     bold: bool = False,
     color: tuple[float, float, float] = (0.08, 0.08, 0.08),
+    font: str | None = None,
 ) -> None:
     """Draw left-aligned text with baseline at (x, y)."""
-    font = _font_name(bold=bold)
+    font = font or _font_name(bold=bold)
     c.setFont(font, font_size)
     c.setFillColorRGB(*color)
     c.drawString(x, y, text)
@@ -470,6 +538,164 @@ def _draw_rect_from_template_px(
     c.rect(left, bottom_y, right - left, top_y - bottom_y, stroke=0, fill=1)
 
 
+def _cover_crop_image(path: Path, target_w: float, target_h: float) -> ImageReader:
+    """Crop an image to fill target_w x target_h without stretching (object-fit: cover)."""
+    img = PILImage.open(path).convert("RGB")
+    src_w, src_h = img.size
+    target_ratio = target_w / target_h
+    src_ratio = src_w / src_h
+    if src_ratio > target_ratio:
+        new_w = max(1, int(round(src_h * target_ratio)))
+        left = max(0, (src_w - new_w) // 2)
+        img = img.crop((left, 0, left + new_w, src_h))
+    else:
+        new_h = max(1, int(round(src_w / target_ratio)))
+        # Bias toward the top so the face/turban stay in frame
+        top = max(0, int(round((src_h - new_h) * 0.18)))
+        if top + new_h > src_h:
+            top = src_h - new_h
+        img = img.crop((0, top, src_w, top + new_h))
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=95)
+    buffer.seek(0)
+    return ImageReader(buffer)
+    """Convert y measured from the top of the page to ReportLab baseline y."""
+    return page_height - y_from_top
+
+
+def _from_top(page_height: float, y_from_top: float) -> float:
+    """Convert y measured from the top of the page to ReportLab baseline y."""
+    return page_height - y_from_top
+
+
+def _is_plumbing_template(template_path: Path) -> bool:
+    stem = template_path.stem.lower()
+    return "plumbing" in stem
+
+
+def _plumbing_name_font() -> str:
+    if "GreatVibes" in pdfmetrics.getRegisteredFontNames():
+        return "GreatVibes"
+    return _name_font_name()
+
+
+def _plumbing_medium_font() -> str:
+    if "Montserrat-Medium" in pdfmetrics.getRegisteredFontNames():
+        return "Montserrat-Medium"
+    return _font_name(bold=False)
+
+
+def _plumbing_semibold_font() -> str:
+    if "Montserrat-SemiBold" in pdfmetrics.getRegisteredFontNames():
+        return "Montserrat-SemiBold"
+    return _font_name(bold=True)
+
+
+def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
+    """Draw name, UID, and footer fields on the landscape plumbing certificate."""
+    layout = PlumbingLayout
+    name_y = _from_top(layout.PAGE_HEIGHT, layout.NAME_BASELINE_FROM_TOP)
+    _draw_centered_text(
+        c,
+        fields["candidateName"],
+        layout.NAME_CENTER_X,
+        name_y,
+        layout.NAME_FONT_SIZE,
+        color=layout.NAVY,
+        font=_plumbing_name_font(),
+    )
+
+    uid = fields.get("uid") or fields.get("delegateNumber") or ""
+    if uid:
+        _draw_left_text(
+            c,
+            uid,
+            layout.UID_X,
+            _from_top(layout.PAGE_HEIGHT, layout.UID_BASELINE_FROM_TOP),
+            layout.UID_FONT_SIZE,
+            color=layout.BLACK,
+            font=_plumbing_medium_font(),
+        )
+
+    footer_y = _from_top(layout.PAGE_HEIGHT, layout.FOOTER_BASELINE_FROM_TOP)
+    footer_size = layout.FOOTER_FONT_SIZE
+    medium = _plumbing_medium_font()
+    _draw_centered_text(
+        c,
+        fields["certificateNumber"],
+        layout.CERT_NUMBER_CENTER_X,
+        footer_y,
+        footer_size,
+        color=layout.BLACK,
+        font=medium,
+    )
+    _draw_centered_text(
+        c,
+        fields["issueDate"],
+        layout.ISSUE_DATE_CENTER_X,
+        footer_y,
+        footer_size,
+        color=layout.BLACK,
+        font=medium,
+    )
+    start_date = fields.get("startDate") or fields.get("trainingStartDate") or ""
+    if start_date:
+        _draw_centered_text(
+            c,
+            start_date,
+            layout.START_DATE_CENTER_X,
+            footer_y,
+            footer_size,
+            color=layout.BLACK,
+            font=medium,
+        )
+    duration = fields.get("trainingDuration") or fields.get("duration") or ""
+    if duration:
+        duration_value = duration.strip()
+        for suffix in (" months", " month", "Months", "MONTHS"):
+            if duration_value.lower().endswith(suffix.lower()):
+                duration_value = duration_value[: -len(suffix)].strip()
+                break
+        _draw_centered_text(
+            c,
+            duration_value,
+            layout.DURATION_CENTER_X,
+            _from_top(layout.PAGE_HEIGHT, layout.DURATION_BASELINE_FROM_TOP),
+            layout.DURATION_FONT_SIZE,
+            color=layout.BLACK,
+            font=_plumbing_semibold_font(),
+        )
+
+    qr_path = Path(fields["qrPath"]) if fields.get("qrPath") else PLUMBING_QR_DEFAULT
+    if qr_path.is_file():
+        size = layout.QR_SIZE
+        qr_x = layout.QR_CENTER_X - size / 2
+        qr_y = _from_top(layout.PAGE_HEIGHT, layout.QR_CENTER_FROM_TOP) - size / 2
+        c.drawImage(
+            str(qr_path),
+            qr_x,
+            qr_y,
+            width=size,
+            height=size,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+
+    photo_path = Path(fields["photoPath"]) if fields.get("photoPath") else PLUMBING_PHOTO_DEFAULT
+    if photo_path.is_file():
+        photo_x = layout.PHOTO_X
+        photo_w = layout.PHOTO_WIDTH
+        photo_h = layout.PHOTO_HEIGHT
+        photo_y = _from_top(layout.PAGE_HEIGHT, layout.PHOTO_TOP) - photo_h
+        photo = _cover_crop_image(photo_path, photo_w, photo_h)
+        c.saveState()
+        clip = c.beginPath()
+        clip.roundRect(photo_x, photo_y, photo_w, photo_h, layout.PHOTO_RADIUS)
+        c.clipPath(clip, stroke=0)
+        c.drawImage(photo, photo_x, photo_y, width=photo_w, height=photo_h, mask="auto")
+        c.restoreState()
+
+
 def _draw_page1_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
     """Draw dynamic fields on certificate page 1."""
     _draw_centered_text(
@@ -524,11 +750,17 @@ def _build_overlay_page(
     fields: dict[str, str],
     page_index: int,
     page_size: tuple[float, float],
+    *,
+    plumbing: bool = False,
 ) -> Any:
     """Create a single-page transparent overlay PDF for merging onto a template page."""
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=page_size)
-    if page_index == 0:
+    if plumbing:
+        if page_index != 0:
+            raise ValueError(f"Unsupported plumbing template page index: {page_index}")
+        _draw_plumbing_overlay(c, fields)
+    elif page_index == 0:
         _draw_page1_overlay(c, fields)
     elif page_index == 1:
         _draw_page2_overlay(c, fields)
@@ -541,7 +773,7 @@ def _build_overlay_page(
 
 def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> Path:
     """
-    Create a 2-page PDF by merging text overlays onto the matching course template.
+    Create a certificate PDF by merging text overlays onto the matching course template.
     Returns the resolved template path.
     """
     template_path = resolve_template_pdf(
@@ -556,16 +788,21 @@ def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> Path:
         fields["certificateId"],
     )
     template_reader = PdfReader(str(template_path))
-    if len(template_reader.pages) < 2:
+    plumbing = _is_plumbing_template(template_path)
+    required_pages = 1 if plumbing else 2
+    if len(template_reader.pages) < required_pages:
         raise ValueError(
-            f"Template {template_path.name} must contain at least 2 pages, "
+            f"Template {template_path.name} must contain at least {required_pages} page(s), "
             f"found {len(template_reader.pages)}"
         )
 
     writer = PdfWriter()
-    for page_index in (0, 1):
+    page_indexes = (0,) if plumbing else (0, 1)
+    for page_index in page_indexes:
         page_size = _template_page_size(template_reader, page_index)
-        overlay_page = _build_overlay_page(fields, page_index, page_size)
+        overlay_page = _build_overlay_page(
+            fields, page_index, page_size, plumbing=plumbing
+        )
         template_page = template_reader.pages[page_index]
         template_page.merge_page(overlay_page)
         writer.add_page(template_page)
