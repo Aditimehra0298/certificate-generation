@@ -9,6 +9,7 @@ Render / Railway via gunicorn.
 
 from __future__ import annotations
 
+import base64
 import io
 import logging
 import os
@@ -17,6 +18,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from flask import Flask, jsonify, request, send_from_directory, abort
 from flask_cors import CORS
@@ -379,6 +382,10 @@ def _validate_payload(data: dict[str, Any]) -> tuple[dict[str, str] | None, tupl
         "trainingDuration": str(data.get("trainingDuration") or data.get("duration") or "").strip(),
         "qrPath": str(data.get("qrPath") or "").strip(),
         "photoPath": str(data.get("photoPath") or "").strip(),
+        "qrUrl": str(data.get("qrUrl") or "").strip(),
+        "photoUrl": str(data.get("photoUrl") or "").strip(),
+        "qrBase64": str(data.get("qrBase64") or "").strip(),
+        "photoBase64": str(data.get("photoBase64") or "").strip(),
     }
     return cleaned, None
 
@@ -541,6 +548,11 @@ def _draw_rect_from_template_px(
 def _cover_crop_image(path: Path, target_w: float, target_h: float) -> ImageReader:
     """Crop an image to fill target_w x target_h without stretching (object-fit: cover)."""
     img = PILImage.open(path).convert("RGB")
+    return _cover_crop_pil(img, target_w, target_h)
+
+
+def _cover_crop_pil(img: PILImage.Image, target_w: float, target_h: float) -> ImageReader:
+    """Crop a PIL image to fill target dimensions without stretching."""
     src_w, src_h = img.size
     target_ratio = target_w / target_h
     src_ratio = src_w / src_h
@@ -550,7 +562,6 @@ def _cover_crop_image(path: Path, target_w: float, target_h: float) -> ImageRead
         img = img.crop((left, 0, left + new_w, src_h))
     else:
         new_h = max(1, int(round(src_w / target_ratio)))
-        # Bias toward the top so the face/turban stay in frame
         top = max(0, int(round((src_h - new_h) * 0.18)))
         if top + new_h > src_h:
             top = src_h - new_h
@@ -559,8 +570,75 @@ def _cover_crop_image(path: Path, target_w: float, target_h: float) -> ImageRead
     img.save(buffer, format="JPEG", quality=95)
     buffer.seek(0)
     return ImageReader(buffer)
-    """Convert y measured from the top of the page to ReportLab baseline y."""
-    return page_height - y_from_top
+
+
+def _decode_base64_image(value: str) -> PILImage.Image:
+    """Decode a base64 string (optionally data-URL prefixed) into a PIL image."""
+    payload = value.strip()
+    if "," in payload and payload.lower().startswith("data:"):
+        payload = payload.split(",", 1)[1]
+    raw = base64.b64decode(payload)
+    return PILImage.open(io.BytesIO(raw)).convert("RGB")
+
+
+def _fetch_image_from_url(url: str) -> PILImage.Image:
+    """Download an image from a public http(s) URL."""
+    req = Request(url, headers={"User-Agent": "certificate-generation-api/1.0"})
+    with urlopen(req, timeout=20) as response:
+        data = response.read()
+    return PILImage.open(io.BytesIO(data)).convert("RGB")
+
+
+def _resolve_plumbing_image(
+    fields: dict[str, str],
+    *,
+    path_key: str,
+    url_key: str,
+    b64_key: str,
+    default_path: Path,
+    kind: str,
+) -> ImageReader | None:
+    """
+    Resolve plumbing overlay image from base64, URL, local path, or default asset.
+    Priority: base64 > URL > path > default (if file exists).
+    """
+    def _to_reader(img: PILImage.Image) -> ImageReader:
+        if kind == "photo":
+            return _cover_crop_pil(img, PlumbingLayout.PHOTO_WIDTH, PlumbingLayout.PHOTO_HEIGHT)
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        return ImageReader(buffer)
+
+    b64_value = fields.get(b64_key, "")
+    if b64_value:
+        try:
+            return _to_reader(_decode_base64_image(b64_value))
+        except Exception as exc:
+            logger.warning("Failed to decode %s: %s", b64_key, exc)
+
+    url_value = fields.get(url_key, "")
+    if url_value:
+        if not url_value.startswith(("http://", "https://")):
+            raise ValueError(f"{url_key} must be a valid http(s) URL")
+        try:
+            return _to_reader(_fetch_image_from_url(url_value))
+        except (URLError, OSError, ValueError) as exc:
+            logger.warning("Failed to fetch %s=%r: %s", url_key, url_value, exc)
+
+    path_value = fields.get(path_key, "")
+    if path_value:
+        path = Path(path_value)
+        if path.is_file():
+            if kind == "photo":
+                return _cover_crop_image(path, PlumbingLayout.PHOTO_WIDTH, PlumbingLayout.PHOTO_HEIGHT)
+            return ImageReader(str(path))
+
+    if default_path.is_file():
+        if kind == "photo":
+            return _cover_crop_image(default_path, PlumbingLayout.PHOTO_WIDTH, PlumbingLayout.PHOTO_HEIGHT)
+        return ImageReader(str(default_path))
+    return None
 
 
 def _from_top(page_height: float, y_from_top: float) -> float:
@@ -666,13 +744,20 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
             font=_plumbing_semibold_font(),
         )
 
-    qr_path = Path(fields["qrPath"]) if fields.get("qrPath") else PLUMBING_QR_DEFAULT
-    if qr_path.is_file():
+    qr_image = _resolve_plumbing_image(
+        fields,
+        path_key="qrPath",
+        url_key="qrUrl",
+        b64_key="qrBase64",
+        default_path=PLUMBING_QR_DEFAULT,
+        kind="qr",
+    )
+    if qr_image:
         size = layout.QR_SIZE
         qr_x = layout.QR_CENTER_X - size / 2
         qr_y = _from_top(layout.PAGE_HEIGHT, layout.QR_CENTER_FROM_TOP) - size / 2
         c.drawImage(
-            str(qr_path),
+            qr_image,
             qr_x,
             qr_y,
             width=size,
@@ -681,18 +766,24 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
             mask="auto",
         )
 
-    photo_path = Path(fields["photoPath"]) if fields.get("photoPath") else PLUMBING_PHOTO_DEFAULT
-    if photo_path.is_file():
+    photo_image = _resolve_plumbing_image(
+        fields,
+        path_key="photoPath",
+        url_key="photoUrl",
+        b64_key="photoBase64",
+        default_path=PLUMBING_PHOTO_DEFAULT,
+        kind="photo",
+    )
+    if photo_image:
         photo_x = layout.PHOTO_X
         photo_w = layout.PHOTO_WIDTH
         photo_h = layout.PHOTO_HEIGHT
         photo_y = _from_top(layout.PAGE_HEIGHT, layout.PHOTO_TOP) - photo_h
-        photo = _cover_crop_image(photo_path, photo_w, photo_h)
         c.saveState()
         clip = c.beginPath()
         clip.roundRect(photo_x, photo_y, photo_w, photo_h, layout.PHOTO_RADIUS)
         c.clipPath(clip, stroke=0)
-        c.drawImage(photo, photo_x, photo_y, width=photo_w, height=photo_h, mask="auto")
+        c.drawImage(photo_image, photo_x, photo_y, width=photo_w, height=photo_h, mask="auto")
         c.restoreState()
 
 
