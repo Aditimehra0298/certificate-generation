@@ -122,44 +122,45 @@ class Page1Layout:
 
 
 class PlumbingLayout:
-    """Single-page landscape euroTECH plumbing certificate (1492 × 1054 pt)."""
+    """Single-page landscape euroTECH plumbing certificate (A4 landscape)."""
 
-    PAGE_WIDTH = 1492.0
-    PAGE_HEIGHT = 1054.0
+    PAGE_WIDTH = 841.89
+    PAGE_HEIGHT = 595.28
     # Spec: name #0B2161, other variable text #111111
     NAVY = (0x0B / 255, 0x21 / 255, 0x61 / 255)
     BLACK = (0x11 / 255, 0x11 / 255, 0x11 / 255)
-    # Spec sizes are px on a 1452-wide artboard; scale to this PDF width.
-    _PX = PAGE_WIDTH / 1452.0
 
-    NAME_CENTER_X = 780.0
-    NAME_BASELINE_FROM_TOP = 444.0
-    NAME_FONT_SIZE = 88 * _PX  # larger script name
+    # Name: between "THIS IS TO CERTIFY THAT" (~193) and gold line (~238)
+    NAME_CENTER_X = 430.0
+    NAME_BASELINE_FROM_TOP = 228.0
+    NAME_FONT_SIZE = 40.0
 
-    UID_X = 686.0
-    UID_BASELINE_FROM_TOP = 503.0
-    UID_FONT_SIZE = 22 * _PX  # 21–23 px
+    # UID value sits after the printed "UID:" label
+    UID_X = 385.0
+    UID_BASELINE_FROM_TOP = 262.0
+    UID_FONT_SIZE = 12.0
 
-    FOOTER_BASELINE_FROM_TOP = 948.0
-    FOOTER_FONT_SIZE = 16 * _PX  # 15–17 px
-    DURATION_FONT_SIZE = 17 * _PX  # 16–18 px
-    CERT_NUMBER_CENTER_X = 418.0
-    ISSUE_DATE_CENTER_X = 625.0
-    START_DATE_CENTER_X = 930.0
-    DURATION_CENTER_X = 1135.0
-    DURATION_BASELINE_FROM_TOP = 954.0
+    # Footer values sit on the blank lines under each label
+    FOOTER_BASELINE_FROM_TOP = 502.0
+    FOOTER_FONT_SIZE = 10.0
+    DURATION_FONT_SIZE = 11.0
+    CERT_NUMBER_CENTER_X = 255.0
+    ISSUE_DATE_CENTER_X = 420.0
+    START_DATE_CENTER_X = 640.0
+    DURATION_CENTER_X = 762.0
+    DURATION_BASELINE_FROM_TOP = 502.0
 
-    # Scan-to-verify box (inside orange border, not covering it)
-    QR_SIZE = 88.0
-    QR_CENTER_X = 746.8
-    QR_CENTER_FROM_TOP = 933.5
+    # Scan-to-verify box (inside orange border)
+    QR_SIZE = 48.0
+    QR_CENTER_X = 437.5
+    QR_CENTER_FROM_TOP = 462.0
 
-    # Candidate photo box (inside gold rounded rectangle, right of the name)
-    PHOTO_X = 1193.0
-    PHOTO_WIDTH = 158.0
-    PHOTO_TOP = 271.0
-    PHOTO_HEIGHT = 224.0
-    PHOTO_RADIUS = 16.0
+    # Candidate photo box (inside gold rounded rectangle)
+    PHOTO_X = 694.0
+    PHOTO_WIDTH = 98.0
+    PHOTO_TOP = 176.0
+    PHOTO_HEIGHT = 142.0
+    PHOTO_RADIUS = 10.0
 
 
 class Page2Layout:
