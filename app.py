@@ -130,37 +130,37 @@ class PlumbingLayout:
     NAVY = (0x0B / 255, 0x21 / 255, 0x61 / 255)
     BLACK = (0x11 / 255, 0x11 / 255, 0x11 / 255)
 
-    # Name: between "THIS IS TO CERTIFY THAT" (~193) and gold line (~238)
-    NAME_CENTER_X = 430.0
-    NAME_BASELINE_FROM_TOP = 228.0
+    # Name: between "THIS IS TO CERTIFY THAT" (~198) and gold line (~260.5)
+    NAME_CENTER_X = 437.0
+    NAME_BASELINE_FROM_TOP = 250.5
     NAME_FONT_SIZE = 40.0
 
-    # UID value sits after the printed "UID:" label
-    UID_X = 385.0
-    UID_BASELINE_FROM_TOP = 262.0
+    # UID value sits after the printed "UID:" label (~359–382, y 273–282)
+    UID_X = 387.0
+    UID_BASELINE_FROM_TOP = 281.0
     UID_FONT_SIZE = 12.0
 
-    # Footer values sit on the blank lines under each label
-    FOOTER_BASELINE_FROM_TOP = 502.0
-    FOOTER_FONT_SIZE = 10.0
-    DURATION_FONT_SIZE = 11.0
-    CERT_NUMBER_CENTER_X = 255.0
-    ISSUE_DATE_CENTER_X = 420.0
-    START_DATE_CENTER_X = 640.0
-    DURATION_CENTER_X = 762.0
-    DURATION_BASELINE_FROM_TOP = 502.0
+    # Footer values sit on the blank lines under each label (underlines at y≈535)
+    FOOTER_BASELINE_FROM_TOP = 533.7
+    FOOTER_FONT_SIZE = 7.5
+    DURATION_FONT_SIZE = 9.0
+    CERT_NUMBER_CENTER_X = 236.0   # underline 208–264, divider at 282
+    ISSUE_DATE_CENTER_X = 353.2    # underline 331–375
+    START_DATE_CENTER_X = 530.2    # underline 495–565
+    DURATION_CENTER_X = 640.7      # underline 625–656, before MONTHS
+    DURATION_BASELINE_FROM_TOP = 533.7
 
-    # Scan-to-verify box (inside orange border)
+    # Scan-to-verify box inner area ~395–446 x 495–547
     QR_SIZE = 48.0
-    QR_CENTER_X = 437.5
-    QR_CENTER_FROM_TOP = 462.0
+    QR_CENTER_X = 420.4
+    QR_CENTER_FROM_TOP = 521.0
 
-    # Candidate photo box (inside gold rounded rectangle)
-    PHOTO_X = 694.0
-    PHOTO_WIDTH = 98.0
-    PHOTO_TOP = 176.0
-    PHOTO_HEIGHT = 142.0
-    PHOTO_RADIUS = 10.0
+    # Candidate photo box (inside orange rounded rectangle)
+    PHOTO_X = 667.0
+    PHOTO_WIDTH = 94.0
+    PHOTO_TOP = 152.0
+    PHOTO_HEIGHT = 130.0
+    PHOTO_RADIUS = 8.0
 
 
 class Page2Layout:
