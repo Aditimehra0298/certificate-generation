@@ -135,10 +135,11 @@ class PlumbingLayout:
     NAME_BASELINE_FROM_TOP = 250.5
     NAME_FONT_SIZE = 40.0
 
-    # UID value sits after the printed "UID:" label (~359–382, y 273–282)
-    UID_X = 387.0
-    UID_BASELINE_FROM_TOP = 281.0
-    UID_FONT_SIZE = 12.0
+    # Draw full "UID: {value}" over the printed label so spacing and baseline match
+    UID_X = 360.8
+    UID_BASELINE_FROM_TOP = 276.5
+    UID_FONT_SIZE = 10.0
+    UID_COVER = (359.0, 266.5, 27.0, 12.5)  # x, y_from_top, w, h
 
     # Footer values sit on the blank lines under each label (underlines at y≈535)
     FOOTER_BASELINE_FROM_TOP = 533.7
@@ -147,13 +148,13 @@ class PlumbingLayout:
     CERT_NUMBER_CENTER_X = 236.0   # underline 208–264, divider at 282
     ISSUE_DATE_CENTER_X = 353.2    # underline 331–375
     START_DATE_CENTER_X = 530.2    # underline 495–565
-    DURATION_CENTER_X = 640.7      # underline 625–656, before MONTHS
+    DURATION_CENTER_X = 647.3      # underline 631–663, before MONTHS
     DURATION_BASELINE_FROM_TOP = 533.7
 
-    # Scan-to-verify box inner area ~395–446 x 495–547
+    # Scan-to-verify box inner area ~395–447 x 501–553
     QR_SIZE = 48.0
-    QR_CENTER_X = 420.4
-    QR_CENTER_FROM_TOP = 521.0
+    QR_CENTER_X = 421.3
+    QR_CENTER_FROM_TOP = 526.8
 
     # Candidate photo box (inside orange rounded rectangle)
     PHOTO_X = 667.0
@@ -161,6 +162,11 @@ class PlumbingLayout:
     PHOTO_TOP = 152.0
     PHOTO_HEIGHT = 130.0
     PHOTO_RADIUS = 8.0
+
+    # After "The performance of the candidate has been found"
+    GRADE_X = 547.5
+    GRADE_BASELINE_FROM_TOP = 487.8
+    GRADE_FONT_SIZE = 12.0
 
 
 class Page2Layout:
@@ -686,14 +692,18 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
 
     uid = fields.get("uid") or fields.get("delegateNumber") or ""
     if uid:
+        cover_x, cover_top, cover_w, cover_h = layout.UID_COVER
+        cover_y = _from_top(layout.PAGE_HEIGHT, cover_top) - cover_h
+        c.setFillColorRGB(253 / 255, 253 / 255, 253 / 255)
+        c.rect(cover_x, cover_y, cover_w, cover_h, fill=1, stroke=0)
         _draw_left_text(
             c,
-            uid,
+            f"UID: {uid}",
             layout.UID_X,
             _from_top(layout.PAGE_HEIGHT, layout.UID_BASELINE_FROM_TOP),
             layout.UID_FONT_SIZE,
             color=layout.BLACK,
-            font=_plumbing_medium_font(),
+            font="Helvetica",
         )
 
     footer_y = _from_top(layout.PAGE_HEIGHT, layout.FOOTER_BASELINE_FROM_TOP)
@@ -743,6 +753,19 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
             layout.DURATION_FONT_SIZE,
             color=layout.BLACK,
             font=_plumbing_semibold_font(),
+        )
+
+    grade = (fields.get("grade") or "").strip()
+    if grade:
+        grade_text = grade if grade.endswith(".") else f"{grade}."
+        _draw_left_text(
+            c,
+            grade_text,
+            layout.GRADE_X,
+            _from_top(layout.PAGE_HEIGHT, layout.GRADE_BASELINE_FROM_TOP),
+            layout.GRADE_FONT_SIZE,
+            color=layout.BLACK,
+            font="Helvetica-Bold",
         )
 
     qr_image = _resolve_plumbing_image(
