@@ -29,7 +29,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from PIL import Image as PILImage
-from PIL import ImageOps
+from PIL import ImageDraw, ImageOps
 
 from template_registry import (
     list_available_courses,
@@ -160,13 +160,13 @@ class PlumbingLayout:
     QR_CENTER_X = 544.5
     QR_CENTER_FROM_TOP = 702.6
 
-    # Candidate photo — inner area of the orange rounded frame (~880–1020 × 188–379)
-    # PHOTO_TOP is 7.5pt less than visual Y because of the template cropbox.
-    PHOTO_X = 883.8
-    PHOTO_WIDTH = 132.0
-    PHOTO_TOP = 184.1
-    PHOTO_HEIGHT = 183.6
-    PHOTO_RADIUS = 8.0
+    # Candidate photo fills the inner rounded frame (orange outer ~880–1020 × 188–379).
+    # PHOTO_TOP is 7.5pt less than visual Y because overlay merge sits on the cropbox.
+    PHOTO_X = 883.0
+    PHOTO_WIDTH = 134.0
+    PHOTO_TOP = 183.5
+    PHOTO_HEIGHT = 187.0
+    PHOTO_RADIUS = 12.0
 
     # After "The performance of the candidate has been found"
     GRADE_X = 728.0
@@ -600,7 +600,7 @@ def _prepare_student_photo(img: PILImage.Image) -> PILImage.Image:
 
 
 def _cover_crop_pil(img: PILImage.Image, target_w: float, target_h: float) -> ImageReader:
-    """Crop any student photo to fill the frame without stretching (object-fit: cover)."""
+    """Cover-crop any student photo into the rounded frame (object-fit: cover)."""
     img = _prepare_student_photo(img)
     src_w, src_h = img.size
     target_ratio = target_w / target_h
@@ -611,10 +611,23 @@ def _cover_crop_pil(img: PILImage.Image, target_w: float, target_h: float) -> Im
         img = img.crop((left, 0, left + new_w, src_h))
     elif src_ratio < target_ratio:
         new_h = max(1, int(round(src_w / target_ratio)))
-        top = max(0, (src_h - new_h) // 2)
+        extra = max(0, src_h - new_h)
+        top = max(0, int(round(extra * 0.22)))
+        if top + new_h > src_h:
+            top = src_h - new_h
         img = img.crop((0, top, src_w, top + new_h))
+
+    scale = 4
+    out_w = max(1, int(round(target_w * scale)))
+    out_h = max(1, int(round(target_h * scale)))
+    radius = max(1, int(round(PlumbingLayout.PHOTO_RADIUS * scale)))
+    img = img.resize((out_w, out_h), PILImage.Resampling.LANCZOS).convert("RGBA")
+    mask = PILImage.new("L", (out_w, out_h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, out_w - 1, out_h - 1), radius=radius, fill=255)
+    rounded = PILImage.new("RGBA", (out_w, out_h), (0, 0, 0, 0))
+    rounded.paste(img, (0, 0), mask)
     buffer = io.BytesIO()
-    img.save(buffer, format="JPEG", quality=95)
+    rounded.save(buffer, format="PNG")
     buffer.seek(0)
     return ImageReader(buffer)
 
@@ -853,12 +866,15 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
         photo_w = layout.PHOTO_WIDTH
         photo_h = layout.PHOTO_HEIGHT
         photo_y = _from_top(layout.PAGE_HEIGHT, layout.PHOTO_TOP) - photo_h
-        c.saveState()
-        clip = c.beginPath()
-        clip.roundRect(photo_x, photo_y, photo_w, photo_h, layout.PHOTO_RADIUS)
-        c.clipPath(clip, stroke=0)
-        c.drawImage(photo_image, photo_x, photo_y, width=photo_w, height=photo_h)
-        c.restoreState()
+        c.drawImage(
+            photo_image,
+            photo_x,
+            photo_y,
+            width=photo_w,
+            height=photo_h,
+            preserveAspectRatio=False,
+            mask="auto",
+        )
 
 
 def _draw_page1_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
