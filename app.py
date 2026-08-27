@@ -150,7 +150,6 @@ class PlumbingLayout:
     DURATION_CENTER_X = 854.5      # underline 832–877, before MONTHS
     DURATION_BASELINE_FROM_TOP = 716.0
     CERT_NUMBER_BASELINE_FROM_TOP = 716.0
-    # Template has no cert-no underline; draw one on the same row as issue/start/duration.
     # 720.5 (not 728) compensates for the template cropbox sitting 7.5pt above mediabox origin.
     CERT_UNDERLINE_FROM_TOP = 720.5
     CERT_UNDERLINE_STROKE = 1.6
@@ -160,18 +159,17 @@ class PlumbingLayout:
     QR_CENTER_X = 544.5
     QR_CENTER_FROM_TOP = 702.6
 
-    # Candidate photo fills the inner rounded frame (orange outer ~880–1020 × 188–379).
-    # PHOTO_TOP is 7.5pt less than visual Y because overlay merge sits on the cropbox.
-    PHOTO_X = 883.0
-    PHOTO_WIDTH = 134.0
-    PHOTO_TOP = 183.5
-    PHOTO_HEIGHT = 187.0
+    # Inner orange photo frame. PHOTO_TOP is 7.5pt less than visual Y (cropbox).
+    PHOTO_X = 883.5
+    PHOTO_WIDTH = 133.0
+    PHOTO_TOP = 184.0
+    PHOTO_HEIGHT = 184.5
     PHOTO_RADIUS = 12.0
 
     # After "The performance of the candidate has been found"
     GRADE_X = 728.0
     GRADE_BASELINE_FROM_TOP = 650.0
-    GRADE_FONT_SIZE = 11.0
+    GRADE_FONT_SIZE = 15.0
 
 
 class Page2Layout:
