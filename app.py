@@ -29,6 +29,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from PIL import Image as PILImage
+from PIL import ImageOps
 
 from template_registry import (
     list_available_courses,
@@ -47,7 +48,6 @@ GENERATED_DIR = BASE_DIR / "generated"
 FONTS_DIR = BASE_DIR / "fonts"
 ASSETS_DIR = BASE_DIR / "assets"
 PLUMBING_QR_DEFAULT = ASSETS_DIR / "plumbing-qr.png"
-PLUMBING_PHOTO_DEFAULT = ASSETS_DIR / "plumbing-photo.png"
 
 FONT_REGULAR = FONTS_DIR / "times.ttf"
 FONT_BOLD = FONTS_DIR / "timesbd.ttf"
@@ -580,12 +580,28 @@ def _trim_qr_quiet_zone(img: PILImage.Image, margin: int = 8) -> PILImage.Image:
 
 def _cover_crop_image(path: Path, target_w: float, target_h: float) -> ImageReader:
     """Crop an image to fill target_w x target_h without stretching (object-fit: cover)."""
-    img = PILImage.open(path).convert("RGB")
+    img = PILImage.open(path)
     return _cover_crop_pil(img, target_w, target_h)
 
 
+def _prepare_student_photo(img: PILImage.Image) -> PILImage.Image:
+    """Normalize any uploaded student photo (orientation, transparency, mode)."""
+    img = ImageOps.exif_transpose(img) or img
+    if img.mode in ("RGBA", "LA"):
+        background = PILImage.new("RGB", img.size, (255, 255, 255))
+        background.paste(img, mask=img.split()[-1])
+        return background
+    if img.mode == "P":
+        img = img.convert("RGBA")
+        background = PILImage.new("RGB", img.size, (255, 255, 255))
+        background.paste(img, mask=img.split()[-1])
+        return background
+    return img.convert("RGB")
+
+
 def _cover_crop_pil(img: PILImage.Image, target_w: float, target_h: float) -> ImageReader:
-    """Crop a PIL image to fill target dimensions without stretching."""
+    """Crop any student photo to fill the frame without stretching (object-fit: cover)."""
+    img = _prepare_student_photo(img)
     src_w, src_h = img.size
     target_ratio = target_w / target_h
     src_ratio = src_w / src_h
@@ -593,11 +609,9 @@ def _cover_crop_pil(img: PILImage.Image, target_w: float, target_h: float) -> Im
         new_w = max(1, int(round(src_h * target_ratio)))
         left = max(0, (src_w - new_w) // 2)
         img = img.crop((left, 0, left + new_w, src_h))
-    else:
+    elif src_ratio < target_ratio:
         new_h = max(1, int(round(src_w / target_ratio)))
-        top = max(0, int(round((src_h - new_h) * 0.18)))
-        if top + new_h > src_h:
-            top = src_h - new_h
+        top = max(0, (src_h - new_h) // 2)
         img = img.crop((0, top, src_w, top + new_h))
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=95)
@@ -611,7 +625,7 @@ def _decode_base64_image(value: str) -> PILImage.Image:
     if "," in payload and payload.lower().startswith("data:"):
         payload = payload.split(",", 1)[1]
     raw = base64.b64decode(payload)
-    return PILImage.open(io.BytesIO(raw)).convert("RGB")
+    return PILImage.open(io.BytesIO(raw))
 
 
 def _fetch_image_from_url(url: str) -> PILImage.Image:
@@ -619,7 +633,7 @@ def _fetch_image_from_url(url: str) -> PILImage.Image:
     req = Request(url, headers={"User-Agent": "certificate-generation-api/1.0"})
     with urlopen(req, timeout=20) as response:
         data = response.read()
-    return PILImage.open(io.BytesIO(data)).convert("RGB")
+    return PILImage.open(io.BytesIO(data))
 
 
 def _resolve_plumbing_image(
@@ -628,12 +642,13 @@ def _resolve_plumbing_image(
     path_key: str,
     url_key: str,
     b64_key: str,
-    default_path: Path,
+    default_path: Path | None,
     kind: str,
 ) -> ImageReader | None:
     """
-    Resolve plumbing overlay image from base64, URL, local path, or default asset.
-    Priority: base64 > URL > path > default (if file exists).
+    Resolve plumbing overlay image from the request.
+    Priority: base64 > URL > path > default (only if a default is provided).
+    Student photos have no default — each request must send its own image.
     """
     def _to_reader(img: PILImage.Image) -> ImageReader:
         if kind == "photo":
@@ -669,7 +684,7 @@ def _resolve_plumbing_image(
                 return _cover_crop_image(path, PlumbingLayout.PHOTO_WIDTH, PlumbingLayout.PHOTO_HEIGHT)
             return _to_reader(PILImage.open(path).convert("RGBA"))
 
-    if default_path.is_file():
+    if default_path is not None and default_path.is_file():
         if kind == "photo":
             return _cover_crop_image(default_path, PlumbingLayout.PHOTO_WIDTH, PlumbingLayout.PHOTO_HEIGHT)
         return _to_reader(PILImage.open(default_path).convert("RGBA"))
@@ -830,7 +845,7 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
         path_key="photoPath",
         url_key="photoUrl",
         b64_key="photoBase64",
-        default_path=PLUMBING_PHOTO_DEFAULT,
+        default_path=None,
         kind="photo",
     )
     if photo_image:
