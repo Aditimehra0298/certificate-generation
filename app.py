@@ -122,51 +122,56 @@ class Page1Layout:
 
 
 class PlumbingLayout:
-    """Single-page landscape euroTECH plumbing certificate (A4 landscape)."""
+    """Single-page landscape euroTECH plumbing certificate."""
 
-    PAGE_WIDTH = 841.89
-    PAGE_HEIGHT = 595.28
+    PAGE_WIDTH = 1086.0
+    PAGE_HEIGHT = 814.5
     # Spec: name #0B2161, other variable text #111111
     NAVY = (0x0B / 255, 0x21 / 255, 0x61 / 255)
     BLACK = (0x11 / 255, 0x11 / 255, 0x11 / 255)
 
-    # Name: between "THIS IS TO CERTIFY THAT" (~198) and gold line (~260.5)
-    NAME_CENTER_X = 437.0
-    NAME_BASELINE_FROM_TOP = 250.5
-    NAME_FONT_SIZE = 40.0
+    # Name: between "THIS IS TO CERTIFY THAT" (~267) and gold line (~331.5)
+    NAME_CENTER_X = 576.5
+    NAME_BASELINE_FROM_TOP = 308.0
+    NAME_FONT_SIZE = 46.0
 
-    # Draw full "UID: {value}" over the printed label so spacing and baseline match
-    UID_X = 360.8
-    UID_BASELINE_FROM_TOP = 276.5
-    UID_FONT_SIZE = 10.0
-    UID_COVER = (359.0, 266.5, 27.0, 12.5)  # x, y_from_top, w, h
+    # UID value only — same baseline as printed "UID:" (~349–361), slightly larger
+    UID_X = 513.0
+    UID_BASELINE_FROM_TOP = 353.6
+    UID_FONT_SIZE = 18.0
 
-    # Footer values sit on the blank lines under each label (underlines at y≈535)
-    FOOTER_BASELINE_FROM_TOP = 533.7
-    FOOTER_FONT_SIZE = 7.5
-    DURATION_FONT_SIZE = 9.0
-    CERT_NUMBER_CENTER_X = 236.0   # underline 208–264, divider at 282
-    ISSUE_DATE_CENTER_X = 353.2    # underline 331–375
-    START_DATE_CENTER_X = 530.2    # underline 495–565
-    DURATION_CENTER_X = 647.3      # underline 631–663, before MONTHS
-    DURATION_BASELINE_FROM_TOP = 533.7
+    # Footer values sit on the blank lines under each label
+    FOOTER_BASELINE_FROM_TOP = 716.0
+    FOOTER_FONT_SIZE = 9.5
+    DURATION_FONT_SIZE = 11.0
+    CERT_NUMBER_CENTER_X = 312.0   # shifted slightly right under "CERTIFICATE NO."
+    ISSUE_DATE_CENTER_X = 460.5    # underline 434–487
+    START_DATE_CENTER_X = 700.0    # underline 652–748
+    DURATION_CENTER_X = 854.5      # underline 832–877, before MONTHS
+    DURATION_BASELINE_FROM_TOP = 716.0
+    CERT_NUMBER_BASELINE_FROM_TOP = 716.0
+    # Template has no cert-no underline; draw one on the same row as issue/start/duration.
+    # 720.5 (not 728) compensates for the template cropbox sitting 7.5pt above mediabox origin.
+    CERT_UNDERLINE_FROM_TOP = 720.5
+    CERT_UNDERLINE_STROKE = 1.6
 
-    # Scan-to-verify box inner area ~395–447 x 501–553
-    QR_SIZE = 48.0
-    QR_CENTER_X = 421.3
-    QR_CENTER_FROM_TOP = 526.8
+    # Scan-to-verify inner area (orange box ~506–583 × 673–748)
+    QR_SIZE = 58.0
+    QR_CENTER_X = 544.5
+    QR_CENTER_FROM_TOP = 702.6
 
-    # Candidate photo box (inside orange rounded rectangle)
-    PHOTO_X = 667.0
-    PHOTO_WIDTH = 94.0
-    PHOTO_TOP = 152.0
-    PHOTO_HEIGHT = 130.0
+    # Candidate photo — inner area of the orange rounded frame (~880–1020 × 188–379)
+    # PHOTO_TOP is 7.5pt less than visual Y because of the template cropbox.
+    PHOTO_X = 883.8
+    PHOTO_WIDTH = 132.0
+    PHOTO_TOP = 184.1
+    PHOTO_HEIGHT = 183.6
     PHOTO_RADIUS = 8.0
 
     # After "The performance of the candidate has been found"
-    GRADE_X = 547.5
-    GRADE_BASELINE_FROM_TOP = 487.8
-    GRADE_FONT_SIZE = 12.0
+    GRADE_X = 728.0
+    GRADE_BASELINE_FROM_TOP = 650.0
+    GRADE_FONT_SIZE = 11.0
 
 
 class Page2Layout:
@@ -552,6 +557,27 @@ def _draw_rect_from_template_px(
     c.rect(left, bottom_y, right - left, top_y - bottom_y, stroke=0, fill=1)
 
 
+def _trim_qr_quiet_zone(img: PILImage.Image, margin: int = 8) -> PILImage.Image:
+    """Crop extra white padding so the QR fills the scan box."""
+    gray = img.convert("L")
+    w, h = gray.size
+    px = gray.load()
+    ink_x: list[int] = []
+    ink_y: list[int] = []
+    for y in range(h):
+        for x in range(w):
+            if px[x, y] < 240:
+                ink_x.append(x)
+                ink_y.append(y)
+    if not ink_x:
+        return img
+    left = max(0, min(ink_x) - margin)
+    top = max(0, min(ink_y) - margin)
+    right = min(w, max(ink_x) + 1 + margin)
+    bottom = min(h, max(ink_y) + 1 + margin)
+    return img.crop((left, top, right, bottom))
+
+
 def _cover_crop_image(path: Path, target_w: float, target_h: float) -> ImageReader:
     """Crop an image to fill target_w x target_h without stretching (object-fit: cover)."""
     img = PILImage.open(path).convert("RGB")
@@ -612,6 +638,8 @@ def _resolve_plumbing_image(
     def _to_reader(img: PILImage.Image) -> ImageReader:
         if kind == "photo":
             return _cover_crop_pil(img, PlumbingLayout.PHOTO_WIDTH, PlumbingLayout.PHOTO_HEIGHT)
+        if kind == "qr":
+            img = _trim_qr_quiet_zone(img)
         buffer = io.BytesIO()
         img.save(buffer, format="PNG")
         buffer.seek(0)
@@ -639,12 +667,12 @@ def _resolve_plumbing_image(
         if path.is_file():
             if kind == "photo":
                 return _cover_crop_image(path, PlumbingLayout.PHOTO_WIDTH, PlumbingLayout.PHOTO_HEIGHT)
-            return ImageReader(str(path))
+            return _to_reader(PILImage.open(path).convert("RGBA"))
 
     if default_path.is_file():
         if kind == "photo":
             return _cover_crop_image(default_path, PlumbingLayout.PHOTO_WIDTH, PlumbingLayout.PHOTO_HEIGHT)
-        return ImageReader(str(default_path))
+        return _to_reader(PILImage.open(default_path).convert("RGBA"))
     return None
 
 
@@ -692,31 +720,38 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
 
     uid = fields.get("uid") or fields.get("delegateNumber") or ""
     if uid:
-        cover_x, cover_top, cover_w, cover_h = layout.UID_COVER
-        cover_y = _from_top(layout.PAGE_HEIGHT, cover_top) - cover_h
-        c.setFillColorRGB(253 / 255, 253 / 255, 253 / 255)
-        c.rect(cover_x, cover_y, cover_w, cover_h, fill=1, stroke=0)
         _draw_left_text(
             c,
-            f"UID: {uid}",
+            uid,
             layout.UID_X,
             _from_top(layout.PAGE_HEIGHT, layout.UID_BASELINE_FROM_TOP),
             layout.UID_FONT_SIZE,
             color=layout.BLACK,
-            font="Helvetica",
+            font=_plumbing_medium_font(),
         )
 
     footer_y = _from_top(layout.PAGE_HEIGHT, layout.FOOTER_BASELINE_FROM_TOP)
     footer_size = layout.FOOTER_FONT_SIZE
     medium = _plumbing_medium_font()
+    cert_number = fields["certificateNumber"]
     _draw_centered_text(
         c,
-        fields["certificateNumber"],
+        cert_number,
         layout.CERT_NUMBER_CENTER_X,
-        footer_y,
+        _from_top(layout.PAGE_HEIGHT, layout.CERT_NUMBER_BASELINE_FROM_TOP),
         footer_size,
         color=layout.BLACK,
         font=medium,
+    )
+    cert_width = c.stringWidth(cert_number, medium, footer_size)
+    underline_y = _from_top(layout.PAGE_HEIGHT, layout.CERT_UNDERLINE_FROM_TOP)
+    c.setStrokeColorRGB(*layout.BLACK)
+    c.setLineWidth(layout.CERT_UNDERLINE_STROKE)
+    c.line(
+        layout.CERT_NUMBER_CENTER_X - cert_width / 2,
+        underline_y,
+        layout.CERT_NUMBER_CENTER_X + cert_width / 2,
+        underline_y,
     )
     _draw_centered_text(
         c,
@@ -807,7 +842,7 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
         clip = c.beginPath()
         clip.roundRect(photo_x, photo_y, photo_w, photo_h, layout.PHOTO_RADIUS)
         c.clipPath(clip, stroke=0)
-        c.drawImage(photo_image, photo_x, photo_y, width=photo_w, height=photo_h, mask="auto")
+        c.drawImage(photo_image, photo_x, photo_y, width=photo_w, height=photo_h)
         c.restoreState()
 
 
