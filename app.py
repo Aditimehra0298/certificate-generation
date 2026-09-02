@@ -146,12 +146,13 @@ class PlumbingLayout:
     DURATION_FONT_SIZE = 11.0
     CERT_NUMBER_CENTER_X = 312.0   # shifted slightly right under "CERTIFICATE NO."
     ISSUE_DATE_CENTER_X = 460.5    # underline 434–487
+    ISSUE_DATE_FIXED = "14-08-2026"
     START_DATE_CENTER_X = 700.0    # underline 652–748
     DURATION_CENTER_X = 854.5      # underline 832–877, before MONTHS
     DURATION_BASELINE_FROM_TOP = 716.0
-    DURATION_FIXED_HOURS = "80 hrs"
+    DURATION_FIXED_HOURS = "138 hours"
     DURATION_DEFAULT_MONTHS = "3"
-    # Full duration like "3 months (80 hrs)" covers the printed MONTHS
+    # Full duration like "3 months (138 hours)" covers the printed MONTHS
     DURATION_FULL_CENTER_X = 878.0
     DURATION_FULL_FONT_SIZE = 9.0
     DURATION_COVER_X = 826.0
@@ -740,7 +741,7 @@ def _plumbing_semibold_font() -> str:
 
 
 def _plumbing_duration_label(raw: str) -> str:
-    """Always show N months plus the fixed 80 hrs for the plumbing program."""
+    """Always show N months plus the fixed 138 hours for the plumbing program."""
     layout = PlumbingLayout
     value = (raw or "").strip()
     value = re.sub(r"\s*\(\s*\d+\s*hrs?\s*\)\s*$", "", value, flags=re.IGNORECASE)
@@ -806,7 +807,7 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
     )
     _draw_centered_text(
         c,
-        fields["issueDate"],
+        layout.ISSUE_DATE_FIXED,
         layout.ISSUE_DATE_CENTER_X,
         footer_y,
         footer_size,
