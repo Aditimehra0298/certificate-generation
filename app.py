@@ -149,6 +149,13 @@ class PlumbingLayout:
     START_DATE_CENTER_X = 700.0    # underline 652–748
     DURATION_CENTER_X = 854.5      # underline 832–877, before MONTHS
     DURATION_BASELINE_FROM_TOP = 716.0
+    # Full duration like "3 months (80 hrs)" covers the printed MONTHS
+    DURATION_FULL_CENTER_X = 878.0
+    DURATION_FULL_FONT_SIZE = 9.0
+    DURATION_COVER_X = 826.0
+    DURATION_COVER_FROM_TOP = 700.5
+    DURATION_COVER_WIDTH = 104.0
+    DURATION_COVER_HEIGHT = 24.0
     CERT_NUMBER_BASELINE_FROM_TOP = 716.0
     # 720.5 (not 728) compensates for the template cropbox sitting 7.5pt above mediabox origin.
     CERT_UNDERLINE_FROM_TOP = 720.5
@@ -802,19 +809,56 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
     duration = fields.get("trainingDuration") or fields.get("duration") or ""
     if duration:
         duration_value = duration.strip()
+        plain_number = duration_value
         for suffix in (" months", " month", "Months", "MONTHS"):
-            if duration_value.lower().endswith(suffix.lower()):
-                duration_value = duration_value[: -len(suffix)].strip()
+            if plain_number.lower().endswith(suffix.lower()):
+                plain_number = plain_number[: -len(suffix)].strip()
                 break
-        _draw_centered_text(
-            c,
-            duration_value,
-            layout.DURATION_CENTER_X,
-            _from_top(layout.PAGE_HEIGHT, layout.DURATION_BASELINE_FROM_TOP),
-            layout.DURATION_FONT_SIZE,
-            color=layout.BLACK,
-            font=_plumbing_semibold_font(),
-        )
+        use_full_duration = not plain_number.replace(".", "", 1).isdigit()
+        if use_full_duration:
+            cover_y = (
+                _from_top(layout.PAGE_HEIGHT, layout.DURATION_COVER_FROM_TOP)
+                - layout.DURATION_COVER_HEIGHT
+            )
+            c.setFillColorRGB(253 / 255, 253 / 255, 253 / 255)
+            c.rect(
+                layout.DURATION_COVER_X,
+                cover_y,
+                layout.DURATION_COVER_WIDTH,
+                layout.DURATION_COVER_HEIGHT,
+                fill=1,
+                stroke=0,
+            )
+            duration_font = _plumbing_semibold_font()
+            duration_size = layout.DURATION_FULL_FONT_SIZE
+            _draw_centered_text(
+                c,
+                duration_value,
+                layout.DURATION_FULL_CENTER_X,
+                _from_top(layout.PAGE_HEIGHT, layout.DURATION_BASELINE_FROM_TOP),
+                duration_size,
+                color=layout.BLACK,
+                font=duration_font,
+            )
+            duration_width = c.stringWidth(duration_value, duration_font, duration_size)
+            c.setStrokeColorRGB(*layout.BLACK)
+            c.setLineWidth(layout.CERT_UNDERLINE_STROKE)
+            c.line(
+                layout.DURATION_FULL_CENTER_X - duration_width / 2,
+                underline_y,
+                layout.DURATION_FULL_CENTER_X + duration_width / 2,
+                underline_y,
+            )
+        else:
+            _draw_centered_text(
+                c,
+                plain_number,
+                layout.DURATION_CENTER_X,
+                _from_top(layout.PAGE_HEIGHT, layout.DURATION_BASELINE_FROM_TOP),
+                layout.DURATION_FONT_SIZE,
+                color=layout.BLACK,
+                font=_plumbing_semibold_font(),
+            )
 
     grade = (fields.get("grade") or "").strip()
     if grade:
