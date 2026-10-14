@@ -121,6 +121,17 @@ class Page1Layout:
     QR_TOP_LEFT = _px(72, 72)
 
 
+class IsmsInductionPage1Layout:
+    """ISMS Induction metadata labels sit lower and further left than the shared layout."""
+
+    META_VALUE_X = 623.0
+    # Same size as the printed "2 Hours" value, and a little lower on each row.
+    META_FONT_SIZE = 24.2
+    ISSUE_DATE_Y = 483.75
+    CERT_NUMBER_Y = 438.25
+    DELEGATE_NUMBER_Y = 384.7
+
+
 class PlumbingLayout:
     """Single-page landscape euroTECH plumbing certificate."""
 
@@ -146,7 +157,7 @@ class PlumbingLayout:
     DURATION_FONT_SIZE = 11.0
     CERT_NUMBER_CENTER_X = 312.0   # shifted slightly right under "CERTIFICATE NO."
     ISSUE_DATE_CENTER_X = 460.5    # underline 434–487
-    ISSUE_DATE_FIXED = "14-08-2026"
+    ISSUE_DATE_FIXED = "24-08-2026"
     START_DATE_CENTER_X = 700.0    # underline 652–748
     DURATION_CENTER_X = 854.5      # underline 832–877, before MONTHS
     DURATION_BASELINE_FROM_TOP = 716.0
@@ -192,8 +203,8 @@ class Page2Layout:
     )
     NAME_FONT_SIZE = 11 * _PT_SCALE
 
-    # “Overall Grade:” row (y≈850) — separate line from name
-    GRADE = (_px(2276, 850)[0] + 30, _px(2276, 850)[1] - 3.4 * _PT_SCALE - 5)
+    # “Overall Grade:” row — value baseline centered on the printed label
+    GRADE = (_px(2276, 850)[0] + 30, _px(2276, 850)[1] - 3.4 * _PT_SCALE - 1)
     GRADE_FONT_SIZE = 11 * _PT_SCALE
 
     # Centered in the blank band above “Certificate Number” / “Issue Date” labels
@@ -206,6 +217,20 @@ class Page2Layout:
         _px(1240, 3210)[1] + 48 * _PT_SCALE + 2,
     )
     FOOTER_FONT_SIZE = 11 * _PT_SCALE
+
+
+class LeadAuditorPage2Layout:
+    """ISMS Lead Auditor transcript footer labels sit lower than the shared layout."""
+
+    FOOTER_DROP = 118.1
+    CERT_NUMBER = (
+        Page2Layout.FOOTER_CERT_NUMBER[0],
+        Page2Layout.FOOTER_CERT_NUMBER[1] - FOOTER_DROP,
+    )
+    ISSUE_DATE = (
+        Page2Layout.FOOTER_ISSUE_DATE[0],
+        Page2Layout.FOOTER_ISSUE_DATE[1] - FOOTER_DROP,
+    )
 
 
 # Required JSON fields for certificate generation
@@ -722,6 +747,20 @@ def _is_plumbing_template(template_path: Path) -> bool:
     return "plumbing" in stem
 
 
+def _is_isms_induction_template(template_path: Path) -> bool:
+    """Only the ISMS Induction certificate, not the ITC India variant."""
+    return template_path.stem.lower().startswith("isms induction")
+
+
+def _is_lead_auditor_footer_template(template_path: Path) -> bool:
+    """Transcript footer lines sit lower on these certificates."""
+    stem = template_path.stem.lower()
+    return stem in {
+        "isoiec 270012022 isms lead auditor course",
+        "dpdpa consent manager compliance training programme",
+    }
+
+
 def _plumbing_name_font() -> str:
     if "GreatVibes" in pdfmetrics.getRegisteredFontNames():
         return "GreatVibes"
@@ -921,7 +960,7 @@ def _draw_plumbing_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
         )
 
 
-def _draw_page1_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
+def _draw_page1_overlay(c: canvas.Canvas, fields: dict[str, str], *, isms: bool = False) -> None:
     """Draw dynamic fields on certificate page 1."""
     _draw_centered_text(
         c,
@@ -932,14 +971,24 @@ def _draw_page1_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
         bold=True,
     )
 
-    meta_x = Page1Layout.META_VALUE_X
-    meta_size = Page1Layout.META_FONT_SIZE
-    _draw_left_text(c, fields["issueDate"], meta_x, Page1Layout.ISSUE_DATE_Y, meta_size, bold=True)
-    _draw_left_text(c, fields["certificateNumber"], meta_x, Page1Layout.CERT_NUMBER_Y, meta_size, bold=True)
-    _draw_left_text(c, fields["delegateNumber"], meta_x, Page1Layout.DELEGATE_NUMBER_Y, meta_size, bold=True)
+    if isms:
+        meta_x = IsmsInductionPage1Layout.META_VALUE_X
+        issue_y = IsmsInductionPage1Layout.ISSUE_DATE_Y
+        cert_y = IsmsInductionPage1Layout.CERT_NUMBER_Y
+        delegate_y = IsmsInductionPage1Layout.DELEGATE_NUMBER_Y
+        meta_size = IsmsInductionPage1Layout.META_FONT_SIZE
+    else:
+        meta_x = Page1Layout.META_VALUE_X
+        issue_y = Page1Layout.ISSUE_DATE_Y
+        cert_y = Page1Layout.CERT_NUMBER_Y
+        delegate_y = Page1Layout.DELEGATE_NUMBER_Y
+        meta_size = Page1Layout.META_FONT_SIZE
+    _draw_left_text(c, fields["issueDate"], meta_x, issue_y, meta_size, bold=True)
+    _draw_left_text(c, fields["certificateNumber"], meta_x, cert_y, meta_size, bold=True)
+    _draw_left_text(c, fields["delegateNumber"], meta_x, delegate_y, meta_size, bold=True)
 
 
-def _draw_page2_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
+def _draw_page2_overlay(c: canvas.Canvas, fields: dict[str, str], *, low_footer: bool = False) -> None:
     """Draw dynamic fields on transcript page 2."""
     _draw_left_text(
         c,
@@ -955,18 +1004,24 @@ def _draw_page2_overlay(c: canvas.Canvas, fields: dict[str, str]) -> None:
         Page2Layout.GRADE[1],
         Page2Layout.GRADE_FONT_SIZE,
     )
+    if low_footer:
+        cert_xy = LeadAuditorPage2Layout.CERT_NUMBER
+        date_xy = LeadAuditorPage2Layout.ISSUE_DATE
+    else:
+        cert_xy = Page2Layout.FOOTER_CERT_NUMBER
+        date_xy = Page2Layout.FOOTER_ISSUE_DATE
     _draw_centered_text(
         c,
         fields["certificateNumber"],
-        Page2Layout.FOOTER_CERT_NUMBER[0],
-        Page2Layout.FOOTER_CERT_NUMBER[1],
+        cert_xy[0],
+        cert_xy[1],
         Page2Layout.FOOTER_FONT_SIZE,
     )
     _draw_centered_text(
         c,
         fields["issueDate"],
-        Page2Layout.FOOTER_ISSUE_DATE[0],
-        Page2Layout.FOOTER_ISSUE_DATE[1],
+        date_xy[0],
+        date_xy[1],
         Page2Layout.FOOTER_FONT_SIZE,
     )
 
@@ -977,6 +1032,8 @@ def _build_overlay_page(
     page_size: tuple[float, float],
     *,
     plumbing: bool = False,
+    isms: bool = False,
+    low_footer: bool = False,
 ) -> Any:
     """Create a single-page transparent overlay PDF for merging onto a template page."""
     buffer = io.BytesIO()
@@ -986,9 +1043,9 @@ def _build_overlay_page(
             raise ValueError(f"Unsupported plumbing template page index: {page_index}")
         _draw_plumbing_overlay(c, fields)
     elif page_index == 0:
-        _draw_page1_overlay(c, fields)
+        _draw_page1_overlay(c, fields, isms=isms)
     elif page_index == 1:
-        _draw_page2_overlay(c, fields)
+        _draw_page2_overlay(c, fields, low_footer=low_footer)
     else:
         raise ValueError(f"Unsupported template page index: {page_index}")
     c.save()
@@ -1014,6 +1071,8 @@ def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> Path:
     )
     template_reader = PdfReader(str(template_path))
     plumbing = _is_plumbing_template(template_path)
+    isms = _is_isms_induction_template(template_path)
+    low_footer = _is_lead_auditor_footer_template(template_path)
     required_pages = 1 if plumbing else 2
     if len(template_reader.pages) < required_pages:
         raise ValueError(
@@ -1026,7 +1085,7 @@ def generate_certificate_pdf(fields: dict[str, str], output_path: Path) -> Path:
     for page_index in page_indexes:
         page_size = _template_page_size(template_reader, page_index)
         overlay_page = _build_overlay_page(
-            fields, page_index, page_size, plumbing=plumbing
+            fields, page_index, page_size, plumbing=plumbing, isms=isms, low_footer=low_footer
         )
         template_page = template_reader.pages[page_index]
         template_page.merge_page(overlay_page)
