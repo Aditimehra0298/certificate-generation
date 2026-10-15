@@ -18,12 +18,14 @@ from pathlib import Path
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 GHG_LEAD_VERIFIER_TEMPLATE = "ISO 14064 GHG LEAD VERIFIER COURSE"
+# The PDF filename stores its en dash as mojibake ("\u00d4\u00c7\u00f4"), so match it verbatim.
+ISO_19011_TEMPLATE = "ISO 190112018 \u00d4\u00c7\u00f4 Guidelines for Auditing Management Systems"
 
 # Canonical template stems — auto-synced from templates/*.pdf at runtime,
 # but listed here for documentation and alias targets.
 CANONICAL_TEMPLATES: tuple[str, ...] = (
-    "Advanced Food Fraud Mitigation and Auditing Aligned with FSSC 22000:2018 VERSION 6",
-    "Business and Corporate Ethics : A Professional Starter Programme",
+    "Advanced Food Fraud Mitigation and Auditing Aligned with FSSC 22000_2018 VERSION 6",
+    "Business and Corporate Ethics _ A Professional Starter Programme",
     "Carbon Trading & Reporting Practitioner Program",
     "Carbon Trading & Reporting",
     "Climate Adaptation & Cost of Inaction Training Course",
@@ -31,30 +33,37 @@ CANONICAL_TEMPLATES: tuple[str, ...] = (
     "Cybersecurity, Ethical Hacking & Penetration Testing Professional Course",
     "DIPLOMA IN CYBERSECURITY & ETHICAL HACKING (FOUNDATIONS)",
     "DIPLOMA IN HACCP FOOD SAFETY STANDARDS (LEVEL 2)",
+    "DPDPA Consent Manager Compliance Training Programme",
     "ESG Management Development Training Program",
-    "EU Cybersecurity Compliance Core (NIS2 & DORA)",
     "Essentials of Carbon Trading & Reporting",
+    "EU Cybersecurity Compliance Core (NIS2 & DORA)",
+    "Food Defense Training Aligned with FSSC 22000 _ 2018 Requirements",
     "FSSC 22000 Category E PRP Implementation and Audit Training for Catering Operations",
-    "Food Defense Training Aligned with FSSC 22000 : 2018 Requirements",
     "GDPR - EU Data Protection Foundation Course",
     "ISMS Induction Training  Program",
-    "ISO 140012015 EMS Internal Auditor Course",
-    "ISO 140012015 EMS Internal Auditor",
-    "ISO 140012015 EMS Lead Auditor Course",
-    "ISO 140012026 EMS Lead Auditor",
-    "ISO 14001:2026  Lead Auditor Transition  Course",
+    "ISO 14001 2015 EMS Internal Auditor Course (2)",
+    "ISO 14001 2015 EMS Lead Auditor Course",
+    "ISO 14001 2026 EMS Internal Auditor",
+    "ISO 14001 2026 EMS Lead Auditor Course",
+    "ISO 14001_2026  Lead Auditor Transition  Course",
+    "ISO 14064 GHG  Lead Accountant Course",
     "ISO 14064 GHG LEAD VERIFIER COURSE",
     "ISO 14064 Mastering GHG Accounting & Verification",
-    "ISO 14971:2019- Application of Risk Management to medical Devices",
-    "ISO 190112018 – Guidelines for Auditing Management Systems",
-    "ISO 22716 GMPs: Best Practices For Cosmetics",
-    "ISOIEC 17021-1:2015 including guidance for internal auditing of FSMS by Certification Bodies",
-    "ISOIEC 27001:2022 Awareness Course",
+    "ISO 14971_2019- Application of Risk Management to medical Devices",
+    ISO_19011_TEMPLATE,
+    "ISO 22000 2018 FSMS & PRP Implementation Course with Internal Auditor Training",
+    "ISO 22716 GMPs_ Best Practices For Cosmetics",
+    "ISOIEC 17021-1_2015 including guidance for internal auditing of FSMS by Certification Bodies",
+    "ISOIEC 27001 2022  ISMS Implementer Training Programme",
+    "ISOIEC 27001 2022 ISMS Foundation & Awareness course",
+    "ISOIEC 270012022  ISMS Implementer Training Programme",
+    "ISOIEC 270012022 ISMS Lead Auditor Course",
+    "ISOIEC 27001_2022 Awareness Course",
     "ITC India ISMS Induction Training Program",
-    "Mastering EU MDR Essentials: Practical Compliance for Medical Devices",
-    "PRP Requirements for Feed and Animal Food Production as per ISO-TS 22002-6:2016",
-    "PRP Requirements for Transport and Storage as per ISO-TS 22002-5:2019",
+    "Mastering EU MDR Essentials_ Practical Compliance for Medical Devices",
     "Professional plumbing tarining program",
+    "PRP Requirements for Feed and Animal Food Production as per ISO-TS 22002-6_2016",
+    "PRP Requirements for Transport and Storage as per ISO-TS 22002-5_2019",
     "Training on ISO 27001 Annex 8",
     "Understanding and Implementing POSH in the Workplace",
 )
@@ -64,28 +73,51 @@ CANONICAL_TEMPLATES: tuple[str, ...] = (
 COURSE_ALIASES: dict[str, str] = {
     # --- Renamed / replaced templates (legacy filenames) ---
     "advanced food fraud mitigation and auditing fssc 220002018 version 6": (
-        "Advanced Food Fraud Mitigation and Auditing Aligned with FSSC 22000:2018 VERSION 6"
+        "Advanced Food Fraud Mitigation and Auditing Aligned with FSSC 22000_2018 VERSION 6"
     ),
     "advanced food fraud mitigation and auditing fssc 22000 2018 version 6": (
-        "Advanced Food Fraud Mitigation and Auditing Aligned with FSSC 22000:2018 VERSION 6"
+        "Advanced Food Fraud Mitigation and Auditing Aligned with FSSC 22000_2018 VERSION 6"
+    ),
+    "advanced food fraud mitigation and auditing aligned with fssc 22000 2018 version 6": (
+        "Advanced Food Fraud Mitigation and Auditing Aligned with FSSC 22000_2018 VERSION 6"
+    ),
+    "business and corporate ethics a professional starter programme": (
+        "Business and Corporate Ethics _ A Professional Starter Programme"
     ),
     "cybersecurity awareness phishness": "Cyber Security Phishing Awareness Trainings",
     "food defense training aligned with fssc 22000 2018 requirements": (
-        "Food Defense Training Aligned with FSSC 22000 : 2018 Requirements"
+        "Food Defense Training Aligned with FSSC 22000 _ 2018 Requirements"
     ),
     "iso 149712019 application of risk management to medical devices": (
-        "ISO 14971:2019- Application of Risk Management to medical Devices"
+        "ISO 14971_2019- Application of Risk Management to medical Devices"
     ),
-    "isoiec 27001 2022 awareness course": "ISOIEC 27001:2022 Awareness Course",
+    "iso 14971 2019 application of risk management to medical devices": (
+        "ISO 14971_2019- Application of Risk Management to medical Devices"
+    ),
+    "iso 22716 gmps best practices for cosmetics": "ISO 22716 GMPs_ Best Practices For Cosmetics",
+    "isoiec 17021 1 2015 including guidance for internal auditing of fsms by certification bodies": (
+        "ISOIEC 17021-1_2015 including guidance for internal auditing of FSMS by Certification Bodies"
+    ),
+    "isoiec 27001 2022 awareness course": "ISOIEC 27001_2022 Awareness Course",
     "mastering eu mdr essentials practical compliance for medical devices": (
-        "Mastering EU MDR Essentials: Practical Compliance for Medical Devices"
+        "Mastering EU MDR Essentials_ Practical Compliance for Medical Devices"
     ),
     "prp requirements for feed and animal food production as per isots 22002 62016": (
-        "PRP Requirements for Feed and Animal Food Production as per ISO-TS 22002-6:2016"
+        "PRP Requirements for Feed and Animal Food Production as per ISO-TS 22002-6_2016"
+    ),
+    "prp requirements for feed and animal food production as per iso ts 22002 6 2016": (
+        "PRP Requirements for Feed and Animal Food Production as per ISO-TS 22002-6_2016"
     ),
     "prp requirements for transport and storage as per isots 22002 52019": (
-        "PRP Requirements for Transport and Storage as per ISO-TS 22002-5:2019"
+        "PRP Requirements for Transport and Storage as per ISO-TS 22002-5_2019"
     ),
+    "prp requirements for transport and storage as per iso ts 22002 5 2019": (
+        "PRP Requirements for Transport and Storage as per ISO-TS 22002-5_2019"
+    ),
+    "iso 140012015 ems internal auditor": "ISO 14001 2015 EMS Internal Auditor Course (2)",
+    "iso 140012015 ems internal auditor course": "ISO 14001 2015 EMS Internal Auditor Course (2)",
+    "iso 140012015 ems lead auditor course": "ISO 14001 2015 EMS Lead Auditor Course",
+    "iso 140012026 ems lead auditor": "ISO 14001 2026 EMS Lead Auditor Course",
     # --- Common short / alternate courseName values from workflows ---
     "haccp food safety standards level 2": "DIPLOMA IN HACCP FOOD SAFETY STANDARDS (LEVEL 2)",
     "diploma in haccp food safety standards level 2": "DIPLOMA IN HACCP FOOD SAFETY STANDARDS (LEVEL 2)",
@@ -98,18 +130,17 @@ COURSE_ALIASES: dict[str, str] = {
     "cybersecurity ethical hacking penetration testing professional course": (
         "Cybersecurity, Ethical Hacking & Penetration Testing Professional Course"
     ),
-    "iso iec 27001 2022 awareness course": "ISOIEC 27001:2022 Awareness Course",
-    "iso 14001 2015 ems internal auditor": "ISO 140012015 EMS Internal Auditor",
-    "iso 14001 2015 ems internal auditor course": "ISO 140012015 EMS Internal Auditor Course",
-    "iso 14001 2015 ems lead auditor course": "ISO 140012015 EMS Lead Auditor Course",
-    "iso 14001 2026 ems lead auditor": "ISO 140012026 EMS Lead Auditor",
-    "iso 14001 2026 lead auditor transition course": "ISO 14001:2026  Lead Auditor Transition  Course",
+    "iso iec 27001 2022 awareness course": "ISOIEC 27001_2022 Awareness Course",
+    "iso 14001 2015 ems internal auditor": "ISO 14001 2015 EMS Internal Auditor Course (2)",
+    "iso 14001 2015 ems internal auditor course": "ISO 14001 2015 EMS Internal Auditor Course (2)",
+    "iso 14001 2015 ems lead auditor course": "ISO 14001 2015 EMS Lead Auditor Course",
+    "iso 14001 2026 ems lead auditor": "ISO 14001 2026 EMS Lead Auditor Course",
+    "iso 14001 2026 lead auditor transition course": "ISO 14001_2026  Lead Auditor Transition  Course",
     "isms induction training program": "ISMS Induction Training  Program",
     "carbon trading reporting practitioner program": "Carbon Trading & Reporting Practitioner Program",
     "carbon trading and reporting practitioner program": "Carbon Trading & Reporting Practitioner Program",
-    "iso 19011 2018 guidelines for auditing management systems": (
-        "ISO 190112018 – Guidelines for Auditing Management Systems"
-    ),
+    "iso 19011 2018 guidelines for auditing management systems": ISO_19011_TEMPLATE,
+    "iso 190112018 guidelines for auditing management systems": ISO_19011_TEMPLATE,
     "posh in the workplace": "Understanding and Implementing POSH in the Workplace",
     "understanding and implementing posh": "Understanding and Implementing POSH in the Workplace",
     "professional plumbing training program": "Professional plumbing tarining program",
