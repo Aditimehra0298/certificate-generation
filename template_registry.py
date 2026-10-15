@@ -17,7 +17,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
-GHG_LEAD_VERIFIER_TEMPLATE = "CERTIFICATES (1)"
+GHG_LEAD_VERIFIER_TEMPLATE = "ISO 14064 GHG LEAD VERIFIER COURSE"
 
 # Canonical template stems — auto-synced from templates/*.pdf at runtime,
 # but listed here for documentation and alias targets.
@@ -44,7 +44,6 @@ CANONICAL_TEMPLATES: tuple[str, ...] = (
     "ISO 140012026 EMS Lead Auditor",
     "ISO 14001:2026  Lead Auditor Transition  Course",
     "ISO 14064 GHG LEAD VERIFIER COURSE",
-    "CERTIFICATES (1)",
     "ISO 14064 Mastering GHG Accounting & Verification",
     "ISO 14971:2019- Application of Risk Management to medical Devices",
     "ISO 190112018 – Guidelines for Auditing Management Systems",
@@ -116,7 +115,7 @@ COURSE_ALIASES: dict[str, str] = {
     "professional plumbing training program": "Professional plumbing tarining program",
     "professional plumbing tarining program": "Professional plumbing tarining program",
     "plumbing training program": "Professional plumbing tarining program",
-    # GHG Lead Verifier always uses the CERTIFICATES (1) artwork
+    # GHG Lead Verifier always uses the ISO 14064 GHG LEAD VERIFIER COURSE artwork
     "iso 14064 ghg lead verifier course": GHG_LEAD_VERIFIER_TEMPLATE,
     "iso 14064 2018 ghg lead verifier course": GHG_LEAD_VERIFIER_TEMPLATE,
     "iso 14064 ghg lead verifier": GHG_LEAD_VERIFIER_TEMPLATE,
