@@ -17,6 +17,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+GHG_LEAD_VERIFIER_TEMPLATE = "CERTIFICATES (1)"
 
 # Canonical template stems — auto-synced from templates/*.pdf at runtime,
 # but listed here for documentation and alias targets.
@@ -43,6 +44,7 @@ CANONICAL_TEMPLATES: tuple[str, ...] = (
     "ISO 140012026 EMS Lead Auditor",
     "ISO 14001:2026  Lead Auditor Transition  Course",
     "ISO 14064 GHG LEAD VERIFIER COURSE",
+    "CERTIFICATES (1)",
     "ISO 14064 Mastering GHG Accounting & Verification",
     "ISO 14971:2019- Application of Risk Management to medical Devices",
     "ISO 190112018 – Guidelines for Auditing Management Systems",
@@ -114,6 +116,12 @@ COURSE_ALIASES: dict[str, str] = {
     "professional plumbing training program": "Professional plumbing tarining program",
     "professional plumbing tarining program": "Professional plumbing tarining program",
     "plumbing training program": "Professional plumbing tarining program",
+    # GHG Lead Verifier always uses the CERTIFICATES (1) artwork
+    "iso 14064 ghg lead verifier course": GHG_LEAD_VERIFIER_TEMPLATE,
+    "iso 14064 2018 ghg lead verifier course": GHG_LEAD_VERIFIER_TEMPLATE,
+    "iso 14064 ghg lead verifier": GHG_LEAD_VERIFIER_TEMPLATE,
+    "ghg lead verifier course": GHG_LEAD_VERIFIER_TEMPLATE,
+    "ghg lead verifier": GHG_LEAD_VERIFIER_TEMPLATE,
 }
 
 
@@ -171,6 +179,15 @@ def _stem_to_path(stem: str, templates: list[Path]) -> Path | None:
     return None
 
 
+def _is_ghg_lead_verifier_request(course_name: str, template_file: str | None = None) -> bool:
+    haystack = normalize_course_name(f"{course_name} {template_file or ''}")
+    return "ghg lead verifier" in haystack
+
+
+def _ghg_lead_verifier_pdf(templates: list[Path]) -> Path | None:
+    return _stem_to_path(GHG_LEAD_VERIFIER_TEMPLATE, templates)
+
+
 def resolve_template_pdf(
     course_name: str,
     *,
@@ -185,17 +202,24 @@ def resolve_template_pdf(
     if not templates:
         raise FileNotFoundError(f"No PDF templates found in {templates_dir}")
 
+    preferred_verifier = _ghg_lead_verifier_pdf(templates)
+
     if template_file:
         explicit = templates_dir / template_file
         if not explicit.is_file():
             raise FileNotFoundError(f"templateFile not found: {template_file}")
         if explicit.suffix.lower() != ".pdf":
             raise FileNotFoundError(f"templateFile must be a .pdf: {template_file}")
+        if preferred_verifier and _is_ghg_lead_verifier_request(course_name, template_file):
+            return preferred_verifier
         return explicit
 
     course_name = course_name.strip()
     if not course_name:
         raise FileNotFoundError("courseName is empty")
+
+    if preferred_verifier and _is_ghg_lead_verifier_request(course_name):
+        return preferred_verifier
 
     norm_course = normalize_course_name(course_name)
 
