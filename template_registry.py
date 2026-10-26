@@ -98,6 +98,10 @@ COURSE_ALIASES: dict[str, str] = {
     "isoiec 17021 1 2015 including guidance for internal auditing of fsms by certification bodies": (
         "ISOIEC 17021-1_2015 including guidance for internal auditing of FSMS by Certification Bodies"
     ),
+    # n8n / LMS courseName (exact string from N8N_CERTIFICATE_COURSE_NAMES)
+    "isoiec 17021 1 2015 internal auditing of fsms by certification bodies": (
+        "ISOIEC 17021-1_2015 including guidance for internal auditing of FSMS by Certification Bodies"
+    ),
     "isoiec 27001 2022 awareness course": "ISOIEC 27001_2022 Awareness Course",
     "mastering eu mdr essentials practical compliance for medical devices": (
         "Mastering EU MDR Essentials_ Practical Compliance for Medical Devices"
